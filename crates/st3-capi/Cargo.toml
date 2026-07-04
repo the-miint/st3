@@ -1,0 +1,15 @@
+[package]
+name = "st3-capi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "SourceTracker3 C ABI (cdylib + staticlib). cbindgen and the Arrow C Data Interface land in the C-ABI milestone."
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+st3-core.workspace = true
+st3-arrow.workspace = true

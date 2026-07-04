@@ -1,0 +1,21 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/st3-core",
+    "crates/st3-arrow",
+    "crates/st3-capi",
+]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "BSD-3-Clause"
+authors = ["The SourceTracker3 Development Team"]
+
+[workspace.dependencies]
+# Shared pins. Heavier deps (arrow, rayon, rand*, cbindgen) are introduced in
+# the milestones that first use them; only what M0 needs is declared here.
+criterion = "0.8"
+st3-core = { path = "crates/st3-core" }
+st3-arrow = { path = "crates/st3-arrow" }

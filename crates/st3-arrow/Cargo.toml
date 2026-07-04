@@ -1,0 +1,11 @@
+[package]
+name = "st3-arrow"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "SourceTracker3 Arrow boundary: COO <-> core conversion. Arrow deps land in the Arrow milestone."
+
+[dependencies]
+st3-core.workspace = true

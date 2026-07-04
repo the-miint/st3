@@ -1,0 +1,5 @@
+#!/bin/sh
+# Enforce the green gate before every commit.
+# Enable with: git config core.hooksPath .githooks
+set -e
+exec make test
