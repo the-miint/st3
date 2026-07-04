@@ -1,0 +1,10 @@
+sample_id	source_sink	env
+a1	source	envA
+a2	source	envA
+b1	source	envB
+b2	source	envB
+c1	source	envC
+c2	source	envC
+sink_pureA	sink	mixA
+sink_AB	sink	mixAB
+sink_ABC	sink	mixABC
