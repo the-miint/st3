@@ -11,6 +11,8 @@
 
 use std::path::{Path, PathBuf};
 
+use st3_core::{CountTable, Role, SampleContext};
+
 /// Absolute path to the committed `fixtures/` directory (repository root),
 /// resolved relative to this crate's manifest so tests are location-independent.
 pub fn fixtures_dir() -> PathBuf {
@@ -163,4 +165,52 @@ pub fn load_metadata(path: &Path) -> Metadata {
 fn read_to_string(path: &Path) -> String {
     std::fs::read_to_string(path)
         .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()))
+}
+
+/// Build a [`CountTable`] from a loaded dense [`Matrix`] (features × samples).
+pub fn build_table(m: &Matrix) -> CountTable {
+    let mut rows = Vec::new();
+    let mut cols = Vec::new();
+    let mut vals = Vec::new();
+    for (r, row) in m.data.iter().enumerate() {
+        for (c, &v) in row.iter().enumerate() {
+            if v != 0.0 {
+                rows.push(r as u32);
+                cols.push(c as u32);
+                vals.push(v);
+            }
+        }
+    }
+    CountTable::from_coo(
+        m.row_labels.clone(),
+        m.col_labels.clone(),
+        &rows,
+        &cols,
+        &vals,
+    )
+    .expect("fixture table builds")
+}
+
+/// Build a [`SampleContext`] aligned to `table`'s sample axis from loaded
+/// metadata (columns `sample_id`, `source_sink`, `env`), matching by id.
+pub fn build_context(table: &CountTable, md: &Metadata) -> SampleContext {
+    let ids = md.column("sample_id");
+    let source_sink = md.column("source_sink");
+    let env = md.column("env");
+    let mut roles = Vec::with_capacity(table.n_samples());
+    let mut envs = Vec::with_capacity(table.n_samples());
+    for sid in table.sample_ids() {
+        let idx = ids
+            .iter()
+            .position(|x| x == sid)
+            .unwrap_or_else(|| panic!("sample {sid} absent from metadata"));
+        let role = match source_sink[idx] {
+            "source" => Role::Source,
+            "sink" => Role::Sink,
+            other => panic!("unexpected source_sink value {other:?}"),
+        };
+        roles.push(role);
+        envs.push(Some(env[idx].to_owned()));
+    }
+    SampleContext::for_table(table, roles, envs).expect("context builds")
 }
