@@ -12,26 +12,13 @@
 
 mod common;
 
-use common::{build_context, build_table, fixtures_dir, load_matrix, load_metadata};
-use st3_core::{
-    CollapseMethod, GibbsEstimator, GibbsParams, SinkEstimate, SinkModel, SinkVec,
-    collapse_sources, rng_for_item,
+use common::{
+    build_context, build_table, fixtures_dir, load_matrix, load_metadata, reference_params,
 };
-
-/// The pinned reference parameters used to generate the committed oracle.
-fn reference_params() -> GibbsParams {
-    GibbsParams {
-        alpha1: 0.001,
-        alpha2: 0.1,
-        beta: 10.0,
-        restarts: 100,
-        draws_per_restart: 10,
-        burnin: 100,
-        delay: 1,
-        collapse: CollapseMethod::Mean,
-        contingency: false,
-    }
-}
+use st3_core::{
+    CollapseMethod, GibbsEstimator, SinkEstimate, SinkModel, SinkVec, collapse_sources,
+    rng_for_item,
+};
 
 /// Mean of the ensemble's proportion vectors (length `v`).
 fn mean_ensemble(est: &SinkEstimate, v: usize) -> Vec<f64> {
@@ -52,7 +39,7 @@ fn synthetic_small_sink_means_match_oracle() {
     let ctx = build_context(&table, &load_metadata(&dir.join("metadata.tsv")));
     let expected = load_matrix(&dir.join("expected_sink_mean.tsv"));
 
-    let params = reference_params();
+    let params = reference_params(CollapseMethod::Mean, false);
     let sources = collapse_sources(&table, &ctx, params.collapse).expect("collapse");
     let prep = GibbsEstimator::prepare(&sources, &params).expect("prepare");
 

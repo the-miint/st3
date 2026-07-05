@@ -21,13 +21,22 @@ a840ccb776878819dc062af4c9a708e01ff09838a9b33c2b53ec89fc6f161cfc  metadata.tsv
 ## Expected outputs
 | file | role | collapse | shape | columns |
 |------|------|----------|-------|---------|
-| `expected_sink_sum.tsv`    | primary   | sum  | 5 sinks × 4          | drainwater, seawater, sewage, Unknown |
-| `expected_sink_sum_sd.tsv` | primary   | sum  | 5 sinks × 4          | (std deviations of the above) |
-| `expected_loo_sum.tsv`     | primary   | sum  | 5 source samples × 4 | drainwater, seawater, sewage, Unknown |
-| `expected_sink_mean.tsv`   | secondary | mean | 5 sinks × 4          | drainwater, seawater, sewage, Unknown |
+| `expected_sink_sum.tsv`        | primary   | sum  | 5 sinks × 4          | drainwater, seawater, sewage, Unknown |
+| `expected_sink_sum_sd.tsv`     | primary   | sum  | 5 sinks × 4          | (std deviations of the above) |
+| `expected_loo_sum.tsv`         | primary   | sum  | 5 source samples × 4 | drainwater, seawater, sewage, Unknown |
+| `expected_sink_mean.tsv`       | secondary | mean | 5 sinks × 4          | drainwater, seawater, sewage, Unknown |
+| `expected_contingency_sum.tsv` | primary   | sum  | COO (nonzeros)       | sink_id, source, feature, mean_count |
 
-Columns are the sorted source environments followed by `Unknown`. Proportion
-rows are renormalized to sum to 1. In leave-one-out, the single drainwater
+Columns of the proportion matrices are the sorted source environments followed
+by `Unknown`; proportion rows are renormalized to sum to 1.
+
+`expected_contingency_sum.tsv` is the per-sink source × taxon assignment table in
+long COO form: `mean_count` is the mean number of the sink's sequences of that
+feature attributed to that source, averaged over draws, so each sink's cells sum
+to its sequencing depth. Only nonzero cells are listed; `source` is a source
+environment or `Unknown`.
+
+In leave-one-out, the single drainwater
 source sample (`s7`) leaves an empty drainwater class when held out, so that
 row's drainwater column is 0 and its mass is distributed over the remaining
 classes.

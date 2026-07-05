@@ -89,6 +89,18 @@ impl SinkEstimate {
     pub fn assignments(&self) -> Option<&CooTally> {
         self.assignments.as_ref()
     }
+
+    /// Assemble an estimate directly from its parts (test-only).
+    ///
+    /// Lets sibling modules' unit tests build a `SinkEstimate` with a chosen
+    /// ensemble without running the sampler.
+    #[cfg(test)]
+    pub(crate) fn from_parts(ensemble: Vec<Vec<f64>>, assignments: Option<CooTally>) -> Self {
+        Self {
+            ensemble,
+            assignments,
+        }
+    }
 }
 
 /// A dense source × taxon assignment tally, averaged over draws.

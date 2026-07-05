@@ -11,7 +11,26 @@
 
 use std::path::{Path, PathBuf};
 
-use st3_core::{CountTable, Role, SampleContext};
+use st3_core::{CollapseMethod, CountTable, GibbsParams, Role, SampleContext};
+
+/// The pinned reference parameters used to generate every committed oracle
+/// (see each fixture's `PROVENANCE.md`): alpha1 0.001, alpha2 0.1, beta 10,
+/// 100 restarts × 10 draws, burnin 100, delay 1. `collapse` and `contingency`
+/// vary per test; every equivalence test must share these so it compares st3
+/// against the configuration the oracles were built with.
+pub fn reference_params(collapse: CollapseMethod, contingency: bool) -> GibbsParams {
+    GibbsParams {
+        alpha1: 0.001,
+        alpha2: 0.1,
+        beta: 10.0,
+        restarts: 100,
+        draws_per_restart: 10,
+        burnin: 100,
+        delay: 1,
+        collapse,
+        contingency,
+    }
+}
 
 /// Absolute path to the committed `fixtures/` directory (repository root),
 /// resolved relative to this crate's manifest so tests are location-independent.

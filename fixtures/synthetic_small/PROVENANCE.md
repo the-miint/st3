@@ -32,13 +32,20 @@ sha256:
 ## Expected outputs
 | file | role | collapse | shape | columns |
 |------|------|----------|-------|---------|
-| `expected_sink_sum.tsv`    | primary   | sum  | 3 sinks × 4          | envA, envB, envC, Unknown |
-| `expected_sink_sum_sd.tsv` | primary   | sum  | 3 sinks × 4          | (std deviations of the above) |
-| `expected_loo_sum.tsv`     | primary   | sum  | 6 source samples × 4 | envA, envB, envC, Unknown |
-| `expected_sink_mean.tsv`   | secondary | mean | 3 sinks × 4          | envA, envB, envC, Unknown |
+| `expected_sink_sum.tsv`        | primary   | sum  | 3 sinks × 4          | envA, envB, envC, Unknown |
+| `expected_sink_sum_sd.tsv`     | primary   | sum  | 3 sinks × 4          | (std deviations of the above) |
+| `expected_loo_sum.tsv`         | primary   | sum  | 6 source samples × 4 | envA, envB, envC, Unknown |
+| `expected_sink_mean.tsv`       | secondary | mean | 3 sinks × 4          | envA, envB, envC, Unknown |
+| `expected_contingency_sum.tsv` | primary   | sum  | COO (nonzeros)       | sink_id, source, feature, mean_count |
 
-Columns are the sorted source environments followed by `Unknown`. Proportion
-rows are renormalized to sum to 1.
+Columns of the proportion matrices are the sorted source environments followed
+by `Unknown`; proportion rows are renormalized to sum to 1.
+
+`expected_contingency_sum.tsv` is the per-sink source × taxon assignment table in
+long COO form: `mean_count` is the mean number of the sink's sequences of that
+feature attributed to that source, averaged over draws, so each sink's cells sum
+to its sequencing depth. Only nonzero cells are listed; `source` is a source
+environment or `Unknown`.
 
 ## Parameters (pinned; identical for every matrix)
 ```

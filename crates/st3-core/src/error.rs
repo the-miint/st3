@@ -113,6 +113,12 @@ pub enum Error {
         /// Why it was rejected.
         reason: &'static str,
     },
+    /// A sink sample had no sequences (total count zero), so its source
+    /// composition cannot be estimated.
+    EmptySink {
+        /// Index (into the sample axis) of the empty sink.
+        sample_index: usize,
+    },
 }
 
 impl fmt::Display for Error {
@@ -158,6 +164,10 @@ impl fmt::Display for Error {
             Error::InvalidParam { name, reason } => {
                 write!(f, "the parameter {name} is invalid: {reason}.")
             }
+            Error::EmptySink { sample_index } => write!(
+                f,
+                "the sink sample at index {sample_index} has no sequences."
+            ),
         }
     }
 }
@@ -205,6 +215,7 @@ mod tests {
                 name: "beta",
                 reason: "must be finite",
             },
+            Error::EmptySink { sample_index: 3 },
         ];
         for e in &variants {
             assert!(!e.to_string().trim().is_empty());
