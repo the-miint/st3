@@ -3,13 +3,21 @@
 
 //! SourceTracker3 core library (algorithm; no FFI, no Arrow, no I/O).
 //!
-//! M2 provides the deterministic preprocessing front-end: a sparse
-//! [`CountTable`], the source/sink split ([`SampleContext`]), collapse of
-//! sources by environment ([`collapse_sources`]), and the sampler
-//! configuration ([`GibbsParams`]).
+//! The deterministic preprocessing front-end provides a sparse [`CountTable`],
+//! the source/sink split ([`SampleContext`]), collapse of sources by
+//! environment ([`collapse_sources`]), seeded rarefaction ([`rarefy()`]), and the
+//! sampler configuration ([`GibbsParams`]).
+//!
+//! The estimator turns collapsed sources plus a sink into an ensemble of source
+//! proportion vectors: [`ConditionalProbability`] precomputes the
+//! depth-independent known-source term, and the pluggable [`SinkModel`] seam —
+//! implemented by [`GibbsEstimator`] — runs the collapsed-Gibbs sampler per
+//! sink, returning a [`SinkEstimate`].
 
 pub mod collapse;
+pub mod cp;
 pub mod error;
+pub mod estimate;
 pub mod metadata;
 pub mod params;
 pub mod rarefy;
@@ -17,7 +25,9 @@ pub mod rng;
 pub mod table;
 
 pub use collapse::{CollapseMethod, CollapsedSources, collapse_sources, collapse_subset};
+pub use cp::ConditionalProbability;
 pub use error::{Axis, Error, Result};
+pub use estimate::{CooTally, GibbsEstimator, SinkEstimate, SinkModel, SinkVec};
 pub use metadata::{Role, SampleContext};
 pub use params::GibbsParams;
 pub use rarefy::{Rarefied, RarefyConfig, SampleStatus, rarefy, rarefy_per_sample};
