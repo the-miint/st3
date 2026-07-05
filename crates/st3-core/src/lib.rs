@@ -17,12 +17,18 @@
 //! [`predict_sinks`] is the end-to-end sink-mode driver: collapse, estimate each
 //! sink, and [`collate()`] the ensembles into a [`SourceMixing`] of mixing means,
 //! per-draw standard deviations (Eq. 7), and optional source × taxon tallies.
+//!
+//! [`predict_loo`] is the complementary leave-one-out driver: for each source
+//! sample in turn it holds that sample out, re-collapses the remaining sources,
+//! and estimates the held-out sample's composition over the source-scoped frame —
+//! a per-sample self-consistency check reusing the same [`SourceMixing`] output.
 
 pub mod collapse;
 pub mod collate;
 pub mod cp;
 pub mod error;
 pub mod estimate;
+pub mod loo;
 pub mod metadata;
 pub mod params;
 pub mod predict;
@@ -35,6 +41,7 @@ pub use collate::{SourceMixing, collate};
 pub use cp::ConditionalProbability;
 pub use error::{Axis, Error, Result};
 pub use estimate::{CooTally, GibbsEstimator, SinkEstimate, SinkModel, SinkVec};
+pub use loo::predict_loo;
 pub use metadata::{Role, SampleContext};
 pub use params::GibbsParams;
 pub use predict::predict_sinks;

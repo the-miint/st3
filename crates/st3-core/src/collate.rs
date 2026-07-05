@@ -125,6 +125,39 @@ impl SourceMixing {
     pub fn contingency(&self) -> Option<&[CooTally]> {
         self.contingency.as_deref()
     }
+
+    /// Assemble a [`SourceMixing`] from already-collated parts.
+    ///
+    /// [`collate`] is the usual builder, but the leave-one-out driver
+    /// ([`crate::predict_loo`]) constructs each row itself — scattering a
+    /// per-fold reduced-frame result into the fixed full frame — and then hands
+    /// the finished matrices here. `means` and `stds` must be dense and
+    /// **sink-major flat**, length `sink_ids.len() * env_names.len()` (row `i` at
+    /// `i * V`, where `V = env_names.len()`); `env_names` are the source
+    /// environments in collapse order then `Unknown`. `contingency`, when `Some`,
+    /// is aligned to `sink_ids`.
+    ///
+    /// # Panics
+    /// Panics (in debug) if `means` or `stds` is not length
+    /// `sink_ids.len() * env_names.len()`.
+    pub(crate) fn from_parts(
+        sink_ids: Vec<String>,
+        env_names: Vec<String>,
+        means: Vec<f64>,
+        stds: Vec<f64>,
+        contingency: Option<Vec<CooTally>>,
+    ) -> SourceMixing {
+        let expected = sink_ids.len() * env_names.len();
+        debug_assert_eq!(means.len(), expected, "means must be dense sink-major");
+        debug_assert_eq!(stds.len(), expected, "stds must be dense sink-major");
+        SourceMixing {
+            sink_ids,
+            env_names,
+            means,
+            stds,
+            contingency,
+        }
+    }
 }
 
 /// Collate per-sink estimates into a [`SourceMixing`].
