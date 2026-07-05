@@ -22,12 +22,18 @@
 //! sample in turn it holds that sample out, re-collapses the remaining sources,
 //! and estimates the held-out sample's composition over the source-scoped frame —
 //! a per-sample self-consistency check reusing the same [`SourceMixing`] output.
+//!
+//! [`eval`] is the statistical-equivalence harness: it generates two-source
+//! Dirichlet mixtures with known mixing weights and scores recovered-vs-true
+//! proportions (R² related to the Jensen–Shannon divergence between sources),
+//! turning "verifiable statistical equivalence" into an enforced test.
 
 pub mod collapse;
 pub mod collate;
 pub mod cp;
 pub mod error;
 pub mod estimate;
+pub mod eval;
 pub mod loo;
 pub mod metadata;
 pub mod params;
@@ -41,6 +47,10 @@ pub use collate::{SourceMixing, collate};
 pub use cp::ConditionalProbability;
 pub use error::{Axis, Error, Result};
 pub use estimate::{CooTally, GibbsEstimator, SinkEstimate, SinkModel, SinkVec};
+pub use eval::{
+    RecoveryScore, SimConfig, Simulation, jensen_shannon_divergence, r_squared, rmse,
+    run_two_source_recovery, score_recovery, simulate_two_source,
+};
 pub use loo::predict_loo;
 pub use metadata::{Role, SampleContext};
 pub use params::GibbsParams;

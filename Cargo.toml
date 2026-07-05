@@ -17,11 +17,13 @@ authors = ["The SourceTracker3 Development Team"]
 # Shared pins. Heavier deps (arrow, rayon, cbindgen) are introduced in the
 # milestones that first use them; only what is needed so far is declared here.
 criterion = "0.8"
-# Rarefaction RNG (M3). rand, rand_xoshiro, and rand_core all resolve to
-# rand_core 0.10.x. WeightedIndex lives in rand::distr::weighted (alloc), so
-# rand_distr is not needed. We always seed explicitly, so default features
-# (getrandom/thread_rng) are off.
+# Rarefaction RNG (M3). rand, rand_xoshiro, rand_distr, and rand_core all resolve
+# to rand_core 0.10.x. WeightedIndex lives in rand::distr::weighted (alloc). The
+# eval module (M7) additionally samples the Dirichlet distribution, which lives in
+# rand_distr (its alloc surface). We always seed explicitly, so default features
+# (getrandom/thread_rng) are off across the family.
 rand = { version = "0.10", default-features = false, features = ["alloc"] }
 rand_xoshiro = "0.8"
+rand_distr = { version = "0.6", default-features = false, features = ["alloc"] }
 st3-core = { path = "crates/st3-core" }
 st3-arrow = { path = "crates/st3-arrow" }
