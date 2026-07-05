@@ -7,6 +7,10 @@ license.workspace = true
 authors.workspace = true
 description = "SourceTracker3 core: preprocessing, the Gibbs estimator, and collation. No FFI, no Arrow, no I/O."
 
+[dependencies]
+rand = { workspace = true }
+rand_xoshiro = { workspace = true }
+
 [dev-dependencies]
 criterion.workspace = true
 
