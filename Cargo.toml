@@ -14,14 +14,16 @@ license = "BSD-3-Clause"
 authors = ["The SourceTracker3 Development Team"]
 
 [workspace.dependencies]
-# Shared pins. Remaining heavier deps (cbindgen) are introduced in the milestone
-# that first uses them; only what is needed so far is declared here.
+# Shared pins.
 criterion = "0.8"
-# Arrow data boundary (M9). Only safe array/schema/RecordBatch construction is
-# used here, which needs no feature, so default features are off. The C Data
-# Interface features (`ffi`/`ffi_stream`) are deferred to M10 (st3-capi), which
+# Arrow data boundary. Only safe array/schema/RecordBatch construction is used in
+# st3-arrow, which needs no feature, so default features are off. The C Data
+# Interface features (`ffi`/`ffi_stream`) are enabled by st3-capi (M10), which
 # does the raw FFI marshaling over these same safe conversions.
 arrow = { version = "59", default-features = false }
+# C header generation (M10, st3-capi build-dependency). cbindgen reads the crate's
+# `#[repr(C)]` types and `extern "C"` fns to emit `st3.h`.
+cbindgen = "0.29"
 # Per-sink / per-fold parallelism (M8). A per-call scoped ThreadPool sized by
 # `jobs` keeps the library reentrant; output is seeded per work-item, so it stays
 # byte-identical across thread counts.

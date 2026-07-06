@@ -5,11 +5,21 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "SourceTracker3 C ABI (cdylib + staticlib). cbindgen and the Arrow C Data Interface land in the C-ABI milestone."
+description = "SourceTracker3 C ABI (cdylib + staticlib) over the Arrow C Data Interface."
 
 [lib]
+# `st3` so the artifacts are `libst3.so` / `libst3.a`, matching the `st3_` symbol
+# prefix and the generated `st3.h`.
+name = "st3"
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
 st3-core.workspace = true
 st3-arrow.workspace = true
+# The `ffi` feature (deferred from st3-arrow) enables both `arrow::ffi`
+# (`from_ffi`/`to_ffi`/`FFI_ArrowSchema`) and `arrow::ffi_stream`
+# (`FFI_ArrowArrayStream`); in arrow 59 the stream module rides the same flag.
+arrow = { workspace = true, features = ["ffi"] }
+
+[build-dependencies]
+cbindgen.workspace = true
