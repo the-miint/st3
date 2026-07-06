@@ -14,6 +14,8 @@
 //! unwind guard on every entry (including the lazily driven contingency stream)
 //! so a panic can never cross the C boundary.
 
+#![deny(missing_docs)]
+
 mod config;
 mod ffi_arrow;
 mod handle;
@@ -26,13 +28,13 @@ use arrow::ffi::{FFI_ArrowArray, FFI_ArrowSchema};
 use arrow::ffi_stream::FFI_ArrowArrayStream;
 use st3_core::{CountTable, Rarefied, SourceMixing, predict_loo, predict_sinks, rarefy_per_sample};
 
-use crate::handle::{St3Table, require_ptr};
+use crate::handle::require_ptr;
 use crate::last_error::{clear_last_error, set_last_error};
 use crate::panic::ffi_guard_result;
 use crate::status::{status_of_arrow, status_of_core};
 
 pub use config::{ST3_CONFIG_V1, St3Collapse, St3Config, St3EstimatorKind};
-pub use handle::{St3Result, st3_result_free, st3_table_free};
+pub use handle::{St3Result, St3Table, st3_result_free, st3_table_free};
 pub use last_error::st3_last_error;
 pub use status::St3Status;
 
@@ -54,9 +56,9 @@ pub extern "C" fn st3_abi_version() -> u32 {
 /// array with `row` (feature index), `col` (sample index), and `val` (count)
 /// children; `feature_ids` is a string array in feature order; and `metadata` is
 /// a struct array with `sample_id`, `role` (`"source"`/`"sink"`), and `env`
-/// (nullable) columns in sample order (decision D14). On success a new handle is
-/// written to `*out` and must later be freed with [`st3_table_free`]. On failure
-/// `*out` is set to null and the reason is available from [`st3_last_error`].
+/// (nullable) columns in sample order. On success a new handle is
+/// written to `*out` and must later be freed with `st3_table_free`. On failure
+/// `*out` is set to null and the reason is available from `st3_last_error`.
 ///
 /// # Safety
 /// Every non-null array/schema pointer must reference a valid C Data Interface
@@ -141,16 +143,16 @@ fn run_inner(handle: &St3Table, config: &St3Config) -> Result<SourceMixing, St3S
 
 /// Run source attribution over an imported table, producing a result handle.
 ///
-/// `table` is a handle from [`st3_table_from_arrow`]; `config` is a versioned
-/// [`St3Config`]. With `config.loo` set the run performs leave-one-out source
+/// `table` is a handle from `st3_table_from_arrow`; `config` is a versioned
+/// `St3Config`. With `config.loo` set the run performs leave-one-out source
 /// prediction, otherwise sink prediction; rarefaction is applied first when a
 /// depth is configured. On success a new result handle is written to `*out` and
-/// must later be freed with [`st3_result_free`]. On failure `*out` is set to null
-/// and the reason is available from [`st3_last_error`].
+/// must later be freed with `st3_result_free`. On failure `*out` is set to null
+/// and the reason is available from `st3_last_error`.
 ///
 /// # Safety
-/// `table` must be a live handle from [`st3_table_from_arrow`], `config` a valid
-/// pointer to an initialized [`St3Config`], and `out` a valid, writable
+/// `table` must be a live handle from `st3_table_from_arrow`, `config` a valid
+/// pointer to an initialized `St3Config`, and `out` a valid, writable
 /// `*mut *mut St3Result`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn st3_run(
@@ -222,7 +224,7 @@ fn export_dense(
 /// caller-provided slots. On success the caller owns and must release both.
 ///
 /// # Safety
-/// `result` must be a live handle from [`st3_run`]; `out` and `out_schema` must
+/// `result` must be a live handle from `st3_run`; `out` and `out_schema` must
 /// be valid, writable, aligned pointers to uninitialized FFI slots.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn st3_result_means(
@@ -235,13 +237,13 @@ pub unsafe extern "C" fn st3_result_means(
 }
 
 /// Export a result's mixing **standard deviations** as a dense Arrow record
-/// batch, same shape as [`st3_result_means`].
+/// batch, same shape as `st3_result_means`.
 ///
-/// The values are the per-draw standard deviations (Eq. 7), never the Python
+/// The values are the per-draw standard deviations, never the Python
 /// reference's `×N_draws` quantity.
 ///
 /// # Safety
-/// As [`st3_result_means`].
+/// As `st3_result_means`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn st3_result_stds(
     result: *const St3Result,
@@ -256,13 +258,13 @@ pub unsafe extern "C" fn st3_result_stds(
 /// stream.
 ///
 /// Yields one flat-COO record batch per sink over the schema
-/// `[sink, source, feature, value]` (decision D13). Requires the run to have been
+/// `[sink, source, feature, value]`. Requires the run to have been
 /// configured with `contingency = true`; otherwise returns
-/// [`St3Status::ErrInvalidInput`]. On success the caller owns the stream and must
+/// `ST3_STATUS_ERR_INVALID_INPUT`. On success the caller owns the stream and must
 /// release it.
 ///
 /// # Safety
-/// `result` must be a live handle from [`st3_run`]; `out_stream` must be a valid,
+/// `result` must be a live handle from `st3_run`; `out_stream` must be a valid,
 /// writable, aligned pointer to an uninitialized `FFI_ArrowArrayStream` slot.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn st3_result_contingency_stream(

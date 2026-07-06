@@ -39,6 +39,41 @@ const C_VALUE: &str = "value";
 
 /// The dense mixing-**mean** batch: `sink_id` + one `Float64` column per env.
 ///
+/// # Examples
+/// ```
+/// use st3_core::{
+///     CollapseMethod, CountTable, GibbsParams, Role, SampleContext, predict_sinks,
+/// };
+/// use st3_arrow::means_batch;
+///
+/// let table = CountTable::from_coo(
+///     vec!["f0".into(), "f1".into()],
+///     vec!["a".into(), "b".into(), "sink".into()],
+///     &[0, 1, 0, 1],
+///     &[0, 1, 2, 2],
+///     &[100.0, 100.0, 90.0, 10.0],
+/// )?;
+/// let ctx = SampleContext::new(
+///     vec![Role::Source, Role::Source, Role::Sink],
+///     vec![Some("envA".into()), Some("envB".into()), None],
+/// )?;
+/// let params = GibbsParams {
+///     restarts: 4,
+///     draws_per_restart: 2,
+///     burnin: 5,
+///     collapse: CollapseMethod::Sum,
+///     ..GibbsParams::default()
+/// };
+/// let mixing = predict_sinks(&table, &ctx, &params, 42, 1)?;
+///
+/// // A dense batch: a `sink_id` column plus one Float64 column per environment.
+/// let batch = means_batch(&mixing)?;
+/// assert_eq!(batch.num_rows(), 1); // one sink
+/// assert_eq!(batch.num_columns(), 1 + 3); // sink_id + envA + envB + Unknown
+/// assert_eq!(batch.schema().field(0).name(), "sink_id");
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+///
 /// # Errors
 /// [`Error::Arrow`](crate::Error::Arrow) if the batch fails Arrow's own schema/
 /// length validation (not expected for well-formed results).

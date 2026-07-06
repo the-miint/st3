@@ -44,6 +44,54 @@ const META_ENV: &str = "env";
 /// order. Integer widths and string flavors are normalized (design §6). Float
 /// `val` is floored by [`CountTable::from_coo`]; this layer does not re-floor.
 ///
+/// # Examples
+/// ```
+/// use std::sync::Arc;
+///
+/// use arrow::array::{ArrayRef, Int32Array, Int64Array, RecordBatch, StringArray, StructArray};
+/// use arrow::datatypes::{DataType, Field, Schema};
+/// use st3_arrow::import;
+///
+/// // COO struct array with `row` (feature), `col` (sample), and `val` (count).
+/// let coo = StructArray::from(vec![
+///     (
+///         Arc::new(Field::new("row", DataType::Int32, false)),
+///         Arc::new(Int32Array::from(vec![0, 1, 0])) as ArrayRef,
+///     ),
+///     (
+///         Arc::new(Field::new("col", DataType::Int32, false)),
+///         Arc::new(Int32Array::from(vec![0, 1, 2])) as ArrayRef,
+///     ),
+///     (
+///         Arc::new(Field::new("val", DataType::Int64, false)),
+///         Arc::new(Int64Array::from(vec![5, 3, 7])) as ArrayRef,
+///     ),
+/// ]);
+/// let feature_ids: ArrayRef = Arc::new(StringArray::from(vec!["f0", "f1"]));
+///
+/// // Per-sample metadata; `env` is nullable, so sinks may leave it null.
+/// let schema = Arc::new(Schema::new(vec![
+///     Field::new("sample_id", DataType::Utf8, false),
+///     Field::new("role", DataType::Utf8, false),
+///     Field::new("env", DataType::Utf8, true),
+/// ]));
+/// let metadata = RecordBatch::try_new(
+///     schema,
+///     vec![
+///         Arc::new(StringArray::from(vec!["s0", "s1", "s2"])) as ArrayRef,
+///         Arc::new(StringArray::from(vec!["source", "source", "sink"])) as ArrayRef,
+///         Arc::new(StringArray::from(vec![Some("envA"), Some("envB"), None])) as ArrayRef,
+///     ],
+/// )?;
+///
+/// let (table, ctx) = import(&coo, feature_ids.as_ref(), &metadata)?;
+/// assert_eq!(table.n_features(), 2);
+/// assert_eq!(table.n_samples(), 3);
+/// assert_eq!(ctx.source_indices(), &[0, 1]);
+/// assert_eq!(ctx.sink_indices(), &[2]);
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+///
 /// # Errors
 /// [`Error::MissingColumn`] for an absent required column; [`Error::WrongType`]
 /// for an unsupported column type; [`Error::UnexpectedNull`] for a null in a

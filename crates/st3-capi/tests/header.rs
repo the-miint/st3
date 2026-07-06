@@ -47,3 +47,46 @@ fn header_is_generated_and_declares_the_surface() {
         "st3.h is missing its include guard"
     );
 }
+
+/// The generated header must carry the item doc comments (cbindgen
+/// `documentation = true`) and they must read as natural C — free of the
+/// rustdoc-isms (intra-doc links, `crate::` paths, `§` section refs) that leak
+/// from Rust doc comments. This locks in the C-clean documentation so a future
+/// cbindgen config regression or a stray rustdoc link is caught.
+#[test]
+fn header_carries_c_clean_docs() {
+    let dir = env!("ST3_HEADER_DIR");
+    let path = Path::new(dir).join("st3.h");
+    let content = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("reading st3.h at {}: {e}", path.display()));
+
+    // Doc comments are present: distinctive phrases from a function, a struct,
+    // and an enum doc. Their absence means `documentation = true` regressed.
+    for phrase in [
+        "Import a COO count table",        // st3_table_from_arrow
+        "leave-one-out source prediction", // st3_run
+        "per-draw standard deviations",    // st3_result_stds
+        "Opaque handle",                   // St3Table / St3Result
+        "Versioned run configuration",     // St3Config
+        "The call succeeded",              // St3Status::Ok
+    ] {
+        assert!(
+            content.contains(phrase),
+            "st3.h is missing the doc phrase {phrase:?}; is cbindgen documentation still on?"
+        );
+    }
+
+    // No rustdoc-isms survive into the C header.
+    assert!(
+        !content.contains("[`"),
+        "st3.h contains a rustdoc intra-doc link (`[`...`]`)"
+    );
+    assert!(
+        !content.contains("crate::"),
+        "st3.h contains a `crate::` path from an intra-doc link"
+    );
+    assert!(
+        !content.contains('§'),
+        "st3.h contains a `§` corpus section reference"
+    );
+}

@@ -31,13 +31,13 @@ pub(crate) struct Dataset {
 
 /// Opaque handle to an imported count table and its sample context.
 ///
-/// Created by [`st3_table_from_arrow`](crate::st3_table_from_arrow) and destroyed
-/// by [`st3_table_free`]. Not `#[repr(C)]`: it is only ever passed by pointer.
+/// Created by `st3_table_from_arrow` and destroyed by `st3_table_free`. It is
+/// only ever passed by pointer.
 pub struct St3Table(pub(crate) Dataset);
 
 /// Opaque handle to a completed run's mixing results.
 ///
-/// Created by [`st3_run`](crate::st3_run) and destroyed by [`st3_result_free`].
+/// Created by `st3_run` and destroyed by `st3_result_free`.
 pub struct St3Result(pub(crate) SourceMixing);
 
 impl St3Table {
@@ -88,16 +88,14 @@ pub(crate) fn require_ptr<T>(ptr: *const T, name: &str) -> Result<(), St3Status>
     }
 }
 
-/// Free a table handle previously returned by
-/// [`st3_table_from_arrow`](crate::st3_table_from_arrow).
+/// Free a table handle previously returned by `st3_table_from_arrow`.
 ///
 /// A null pointer is a no-op.
 ///
 /// # Safety
-/// `handle` must be null or a pointer returned by
-/// [`st3_table_from_arrow`](crate::st3_table_from_arrow) that has not already
-/// been freed. Passing any other pointer, or freeing twice, is undefined
-/// behavior.
+/// `handle` must be null or a pointer returned by `st3_table_from_arrow` that
+/// has not already been freed. Passing any other pointer, or freeing twice, is
+/// undefined behavior.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn st3_table_free(handle: *mut St3Table) {
     ffi_guard_void(|| {
@@ -109,14 +107,14 @@ pub unsafe extern "C" fn st3_table_free(handle: *mut St3Table) {
     });
 }
 
-/// Free a result handle previously returned by [`st3_run`](crate::st3_run).
+/// Free a result handle previously returned by `st3_run`.
 ///
 /// A null pointer is a no-op.
 ///
 /// # Safety
-/// `handle` must be null or a pointer returned by [`st3_run`](crate::st3_run)
-/// that has not already been freed. Passing any other pointer, or freeing twice,
-/// is undefined behavior.
+/// `handle` must be null or a pointer returned by `st3_run` that has not already
+/// been freed. Passing any other pointer, or freeing twice, is undefined
+/// behavior.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn st3_result_free(handle: *mut St3Result) {
     ffi_guard_void(|| {

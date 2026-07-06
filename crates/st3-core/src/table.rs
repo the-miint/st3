@@ -47,6 +47,26 @@ impl CountTable {
     /// float-to-integer boundary in the pipeline. Explicit zeros (and values
     /// that floor to zero) are dropped rather than stored.
     ///
+    /// # Examples
+    /// ```
+    /// use st3_core::CountTable;
+    ///
+    /// // Two features, two samples. Within a column rows are stored ascending;
+    /// // sample 1 gets features 0 and 1 with counts 2 and 3.
+    /// let table = CountTable::from_coo(
+    ///     vec!["f0".into(), "f1".into()],
+    ///     vec!["s0".into(), "s1".into()],
+    ///     &[0, 1, 0],       // feature (row) indices
+    ///     &[0, 1, 1],       // sample (col) indices
+    ///     &[5.0, 3.0, 2.0], // counts
+    /// )?;
+    /// assert_eq!(table.n_features(), 2);
+    /// assert_eq!(table.n_samples(), 2);
+    /// assert_eq!(table.column(0), (&[0u32][..], &[5u32][..]));
+    /// assert_eq!(table.column_sum(1), 5); // 3 + 2
+    /// # Ok::<(), st3_core::Error>(())
+    /// ```
+    ///
     /// # Errors
     /// Returns an [`Error`] for an empty axis, mismatched input lengths,
     /// duplicate ids, non-finite or negative values, out-of-bounds coordinates,

@@ -39,6 +39,43 @@ use crate::table::CountTable;
 /// `(seed, position)` alone and results are collated in sink order, the output is
 /// byte-identical regardless of `jobs`.
 ///
+/// # Examples
+/// ```
+/// use st3_core::{
+///     CollapseMethod, CountTable, GibbsParams, Role, SampleContext, predict_sinks,
+/// };
+///
+/// // Two source environments (envA carries f0, envB carries f1) and one sink
+/// // that is mostly f0, so it should attribute mostly to envA.
+/// let table = CountTable::from_coo(
+///     vec!["f0".into(), "f1".into()],
+///     vec!["a".into(), "b".into(), "sink".into()],
+///     &[0, 1, 0, 1],
+///     &[0, 1, 2, 2],
+///     &[100.0, 100.0, 90.0, 10.0],
+/// )?;
+/// let ctx = SampleContext::new(
+///     vec![Role::Source, Role::Source, Role::Sink],
+///     vec![Some("envA".into()), Some("envB".into()), None],
+/// )?;
+/// // Tiny, fast, deterministic sampler settings.
+/// let params = GibbsParams {
+///     restarts: 4,
+///     draws_per_restart: 2,
+///     burnin: 5,
+///     collapse: CollapseMethod::Sum,
+///     ..GibbsParams::default()
+/// };
+/// let mixing = predict_sinks(&table, &ctx, &params, 42, 1)?;
+///
+/// // One row per sink; columns are the source environments then `Unknown`.
+/// assert_eq!(mixing.env_names(), &["envA", "envB", "Unknown"]);
+/// let row = mixing.mean_row(0);
+/// assert!((row.iter().sum::<f64>() - 1.0).abs() < 1e-9); // proportions sum to 1
+/// assert!(row[0] > row[1]); // more envA than envB
+/// # Ok::<(), st3_core::Error>(())
+/// ```
+///
 /// # Errors
 /// [`Error::EmptySink`] if a sink column has no sequences (the lowest-index empty
 /// sink, independent of `jobs`); propagates [`collapse_sources`],

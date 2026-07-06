@@ -54,7 +54,7 @@ const GEN_ITEM: u64 = u64::MAX;
 ///
 /// # Panics
 /// Panics (in debug) if `a` and `b` differ in length.
-pub fn rmse(a: &[f64], b: &[f64]) -> f64 {
+pub(crate) fn rmse(a: &[f64], b: &[f64]) -> f64 {
     debug_assert_eq!(a.len(), b.len(), "rmse operands must be equal length");
     let n = a.len();
     if n == 0 {
@@ -78,7 +78,7 @@ pub fn rmse(a: &[f64], b: &[f64]) -> f64 {
 ///
 /// # Panics
 /// Panics (in debug) if `predicted` and `truth` differ in length.
-pub fn r_squared(predicted: &[f64], truth: &[f64]) -> f64 {
+pub(crate) fn r_squared(predicted: &[f64], truth: &[f64]) -> f64 {
     debug_assert_eq!(
         predicted.len(),
         truth.len(),
@@ -119,7 +119,7 @@ pub fn r_squared(predicted: &[f64], truth: &[f64]) -> f64 {
 ///
 /// # Panics
 /// Panics (in debug) if `p` and `q` differ in length.
-pub fn jensen_shannon_divergence(p: &[f64], q: &[f64]) -> f64 {
+pub(crate) fn jensen_shannon_divergence(p: &[f64], q: &[f64]) -> f64 {
     debug_assert_eq!(p.len(), q.len(), "jsd operands must be equal length");
     // Half of each component's contribution to KL(·‖M); 0·log0 ≡ 0.
     let half_kl = |x: f64, m: f64| if x > 0.0 { x * (x / m).log2() } else { 0.0 };
@@ -242,6 +242,28 @@ pub struct RecoveryScore {
 /// mixture `round(m·sink_depth)` reads from `P` plus the remainder from `Q` for a
 /// fresh `m ~ Uniform(0, 1)`. All randomness derives from `seed`.
 ///
+/// # Examples
+/// ```
+/// use st3_core::{SimConfig, simulate_two_source};
+///
+/// let cfg = SimConfig {
+///     n_taxa: 8,
+///     samples_per_source: 2,
+///     seqs_per_sample: 100,
+///     n_trials: 4,
+///     sink_depth: 100,
+///     concentration: 0.1, // small concentration -> well-separated sources
+/// };
+/// let sim = simulate_two_source(&cfg, 42)?;
+///
+/// // 2 * samples_per_source source columns, then n_trials sink columns.
+/// assert_eq!(sim.table().n_samples(), 2 * 2 + 4);
+/// assert_eq!(sim.truth().len(), 4);
+/// assert!(sim.truth().iter().all(|&m| (0.0..=1.0).contains(&m)));
+/// assert!((0.0..=1.0).contains(&sim.jsd()));
+/// # Ok::<(), st3_core::Error>(())
+/// ```
+///
 /// # Errors
 /// [`Error::InvalidParam`] if any [`SimConfig`] field is out of range; propagates
 /// [`CountTable::from_coo`] and [`SampleContext::for_table`] construction errors.
@@ -352,7 +374,7 @@ fn multinomial_into(rng: &mut ItemRng, wi: &WeightedIndex<f64>, depth: u32, out:
 /// # Panics
 /// Panics if `mixing` does not carry both source environments of `sim`, or its
 /// sink count differs from `sim.truth().len()`.
-pub fn score_recovery(sim: &Simulation, mixing: &SourceMixing) -> RecoveryScore {
+pub(crate) fn score_recovery(sim: &Simulation, mixing: &SourceMixing) -> RecoveryScore {
     assert_eq!(
         mixing.n_sinks(),
         sim.truth().len(),

@@ -133,6 +133,29 @@ pub fn rarefy(
 /// deterministic pass. Column `s` is always seeded `rng_for_item(seed, s)`
 /// regardless of its depth, so per-column results are order- and jobs-independent.
 ///
+/// # Examples
+/// ```
+/// use st3_core::{CountTable, SampleStatus, rarefy_per_sample};
+///
+/// let table = CountTable::from_coo(
+///     vec!["f0".into(), "f1".into()],
+///     vec!["deep".into(), "shallow".into()],
+///     &[0, 1, 0],
+///     &[0, 0, 1],
+///     &[60.0, 40.0, 5.0], // deep sums to 100, shallow sums to 5
+/// )?;
+/// // Rarefy each sample to depth 50, without replacement, seeded.
+/// let rarefied = rarefy_per_sample(&table, &[Some(50), Some(50)], false, 42)?;
+///
+/// // The deep sample is subsampled to exactly 50; the shallow one cannot reach
+/// // the target depth and is passed through unchanged and flagged.
+/// assert_eq!(rarefied.table().column_sum(0), 50);
+/// assert_eq!(rarefied.status()[0], SampleStatus::Rarefied);
+/// assert_eq!(rarefied.status()[1], SampleStatus::TooShallow);
+/// assert_eq!(rarefied.table().column_sum(1), 5);
+/// # Ok::<(), st3_core::Error>(())
+/// ```
+///
 /// # Errors
 /// [`Error::LengthMismatch`] if `depths.len() != table.n_samples()`, plus the
 /// errors of [`rarefy`].

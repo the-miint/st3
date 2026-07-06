@@ -22,6 +22,8 @@
 //! Only safe arrow-rs types are used here; the Arrow C Data Interface marshaling
 //! lives in the C ABI crate (a later milestone), driving these conversions.
 
+#![deny(missing_docs)]
+
 mod error;
 mod export;
 mod import;

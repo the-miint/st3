@@ -15,7 +15,7 @@
 //! sink, returning a [`SinkEstimate`].
 //!
 //! [`predict_sinks`] is the end-to-end sink-mode driver: collapse, estimate each
-//! sink, and [`collate()`] the ensembles into a [`SourceMixing`] of mixing means,
+//! sink, and collate the ensembles into a [`SourceMixing`] of mixing means,
 //! per-draw standard deviations (Eq. 7), and optional source × taxon tallies.
 //!
 //! [`predict_loo`] is the complementary leave-one-out driver: for each source
@@ -23,34 +23,77 @@
 //! and estimates the held-out sample's composition over the source-scoped frame —
 //! a per-sample self-consistency check reusing the same [`SourceMixing`] output.
 //!
-//! [`eval`] is the statistical-equivalence harness: it generates two-source
-//! Dirichlet mixtures with known mixing weights and scores recovered-vs-true
-//! proportions (R² related to the Jensen–Shannon divergence between sources),
-//! turning "verifiable statistical equivalence" into an enforced test.
+//! [`simulate_two_source`] and [`run_two_source_recovery`] are the
+//! statistical-equivalence harness: they generate two-source Dirichlet mixtures
+//! with known mixing weights and score recovered-vs-true proportions (R² related
+//! to the Jensen–Shannon divergence between sources), turning "verifiable
+//! statistical equivalence" into an enforced test.
+//!
+//! # Example
+//!
+//! Build a table from COO triples, label each sample, and estimate a sink's
+//! source composition end to end:
+//!
+//! ```
+//! use st3_core::{
+//!     CollapseMethod, CountTable, GibbsParams, Role, SampleContext, predict_sinks,
+//! };
+//!
+//! // Two source environments (envA on f0, envB on f1) and one sink dominated by f0.
+//! let table = CountTable::from_coo(
+//!     vec!["f0".into(), "f1".into()],
+//!     vec!["a".into(), "b".into(), "sink".into()],
+//!     &[0, 1, 0, 1],
+//!     &[0, 1, 2, 2],
+//!     &[100.0, 100.0, 90.0, 10.0],
+//! )?;
+//! let ctx = SampleContext::new(
+//!     vec![Role::Source, Role::Source, Role::Sink],
+//!     vec![Some("envA".into()), Some("envB".into()), None],
+//! )?;
+//! // Tiny, fast, deterministic sampler settings for the example.
+//! let params = GibbsParams {
+//!     restarts: 4,
+//!     draws_per_restart: 2,
+//!     burnin: 5,
+//!     collapse: CollapseMethod::Sum,
+//!     ..GibbsParams::default()
+//! };
+//! let mixing = predict_sinks(&table, &ctx, &params, 42, 1)?;
+//!
+//! // One row per sink; columns are the source environments then `Unknown`.
+//! assert_eq!(mixing.env_names(), &["envA", "envB", "Unknown"]);
+//! let row = mixing.mean_row(0);
+//! assert!((row.iter().sum::<f64>() - 1.0).abs() < 1e-9);
+//! # Ok::<(), st3_core::Error>(())
+//! ```
 
-pub mod collapse;
-pub mod collate;
-pub mod cp;
-pub mod error;
-pub mod estimate;
-pub mod eval;
-pub mod loo;
-pub mod metadata;
+#![deny(missing_docs)]
+
+// Modules are private; the crate's public surface is exactly the curated set of
+// re-exports below (one path per item, mirroring st3-arrow and st3-capi).
+mod collapse;
+mod collate;
+mod cp;
+mod error;
+mod estimate;
+mod eval;
+mod loo;
+mod metadata;
 mod parallel;
-pub mod params;
-pub mod predict;
-pub mod rarefy;
-pub mod rng;
-pub mod table;
+mod params;
+mod predict;
+mod rarefy;
+mod rng;
+mod table;
 
 pub use collapse::{CollapseMethod, CollapsedSources, collapse_sources, collapse_subset};
-pub use collate::{SourceMixing, collate};
+pub use collate::SourceMixing;
 pub use cp::ConditionalProbability;
 pub use error::{Axis, Error, Result};
 pub use estimate::{CooTally, GibbsEstimator, SinkEstimate, SinkModel, SinkVec};
 pub use eval::{
-    RecoveryScore, SimConfig, Simulation, jensen_shannon_divergence, r_squared, rmse,
-    run_two_source_recovery, score_recovery, simulate_two_source,
+    RecoveryScore, SimConfig, Simulation, run_two_source_recovery, simulate_two_source,
 };
 pub use loo::predict_loo;
 pub use metadata::{Role, SampleContext};

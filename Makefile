@@ -1,4 +1,4 @@
-.PHONY: test fmt clippy doc bench-check bench perf-guard build
+.PHONY: test fmt clippy doc bench-check bench perf-guard build header
 
 # Full green gate — the single command every milestone must leave passing.
 test:
@@ -34,3 +34,18 @@ perf-guard: bench
 
 build:
 	cargo build --workspace
+
+# Emit the cbindgen-generated C header to a stable path for C consumers. The
+# header is generated into the release build's OUT_DIR during compilation (it is
+# not committed); this builds the C ABI crate, locates the freshest generated
+# copy under target/release, and copies it to target/st3.h. Not part of
+# `make test`.
+header:
+	cargo build --release -p st3-capi
+	@hdr=$$(find target/release -path '*st3-capi*/out/st3.h' -printf '%T@ %p\n' \
+		| sort -rn | head -1 | cut -d' ' -f2-); \
+	if [ -z "$$hdr" ]; then \
+		echo "st3.h not found under target/release; did the build run?" >&2; exit 1; \
+	fi; \
+	cp "$$hdr" target/st3.h; \
+	echo "st3.h -> target/st3.h"

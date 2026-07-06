@@ -70,6 +70,47 @@ struct FoldRow {
 /// and rows are assembled in fold order, so the output is byte-identical
 /// regardless of `jobs`.
 ///
+/// # Examples
+/// ```
+/// use st3_core::{
+///     CollapseMethod, CountTable, GibbsParams, Role, SampleContext, predict_loo,
+/// };
+///
+/// // Two samples in each of two environments (envA on f0, envB on f1).
+/// let table = CountTable::from_coo(
+///     vec!["f0".into(), "f1".into()],
+///     vec!["a1".into(), "a2".into(), "b1".into(), "b2".into()],
+///     &[0, 0, 1, 1],
+///     &[0, 1, 2, 3],
+///     &[100.0, 100.0, 100.0, 100.0],
+/// )?;
+/// let ctx = SampleContext::new(
+///     vec![Role::Source, Role::Source, Role::Source, Role::Source],
+///     vec![
+///         Some("envA".into()),
+///         Some("envA".into()),
+///         Some("envB".into()),
+///         Some("envB".into()),
+///     ],
+/// )?;
+/// let params = GibbsParams {
+///     restarts: 4,
+///     draws_per_restart: 2,
+///     burnin: 5,
+///     collapse: CollapseMethod::Sum,
+///     ..GibbsParams::default()
+/// };
+/// let loo = predict_loo(&table, &ctx, &params, 42, 1)?;
+///
+/// // One row per held-out source sample; columns are the source envs then Unknown.
+/// assert_eq!(loo.n_sinks(), 4);
+/// assert_eq!(loo.env_names(), &["envA", "envB", "Unknown"]);
+/// assert_eq!(loo.sink_ids(), &["a1", "a2", "b1", "b2"]);
+/// assert!((loo.mean_row(0).iter().sum::<f64>() - 1.0).abs() < 1e-9);
+/// assert!(loo.contingency().is_none()); // LOO never emits a tally
+/// # Ok::<(), st3_core::Error>(())
+/// ```
+///
 /// # Errors
 /// [`Error::EmptySink`] if a held-out source column has no sequences; propagates
 /// [`collapse_subset`] ([`Error::NoSources`] when only a single source sample

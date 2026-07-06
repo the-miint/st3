@@ -171,7 +171,7 @@ impl SourceMixing {
 /// # Panics
 /// Panics (in debug) if `estimates` and `sink_ids` differ in length, or an
 /// ensemble vector is not length `env_names.len()`.
-pub fn collate(
+pub(crate) fn collate(
     estimates: &[SinkEstimate],
     sink_ids: Vec<String>,
     env_names: Vec<String>,

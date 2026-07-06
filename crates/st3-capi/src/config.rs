@@ -33,7 +33,7 @@ use crate::last_error::set_last_error;
 use crate::status::St3Status;
 
 /// The only configuration layout version understood by this ABI. Callers set
-/// [`St3Config::struct_version`] to this value.
+/// the `St3Config.struct_version` field to this value.
 pub const ST3_CONFIG_V1: u32 = 1;
 
 /// The version + size prefix every `St3Config` layout version shares (the first
@@ -83,7 +83,7 @@ pub(crate) unsafe fn validate_prefix(config: *const St3Config) -> Result<(), St3
 }
 
 /// How source samples are aggregated per environment. Named constants for the
-/// [`St3Config::collapse`] field.
+/// `St3Config.collapse` field.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum St3Collapse {
@@ -95,7 +95,7 @@ pub enum St3Collapse {
 }
 
 /// Which per-sink estimator to run. Named constant for the
-/// [`St3Config::estimator`] field. Only the collapsed-Gibbs sampler ships in v1.
+/// `St3Config.estimator` field. Only the collapsed-Gibbs sampler ships in v1.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum St3EstimatorKind {
@@ -103,18 +103,17 @@ pub enum St3EstimatorKind {
     GibbsCollapsed = 0,
 }
 
-/// Versioned run configuration passed to [`st3_run`](crate::st3_run).
+/// Versioned run configuration passed to `st3_run`.
 ///
 /// The layout is frozen for a given `struct_version`; new fields are only ever
-/// appended under a higher version. `collapse` and `estimator` hold an
-/// [`St3Collapse`] / [`St3EstimatorKind`] discriminant respectively (stored as
-/// `i32` for FFI soundness — see the module docs); the boolean flags are `u8`
-/// (0 = false, nonzero = true) for the same reason. A rarefaction depth of `0`
+/// appended under a higher version. `collapse` and `estimator` each hold a
+/// `St3Collapse` / `St3EstimatorKind` value (as an `int32_t`); the boolean flags
+/// are `uint8_t` (0 = false, nonzero = true). A rarefaction depth of `0`
 /// disables rarefaction for that role.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct St3Config {
-    /// ABI layout version; must equal [`ST3_CONFIG_V1`].
+    /// ABI layout version; must equal `ST3_CONFIG_V1`.
     pub struct_version: u32,
     /// `size_of` the config struct; must equal the library's own size.
     pub struct_size: u32,
@@ -129,7 +128,7 @@ pub struct St3Config {
     /// Rarefy with replacement (multinomial) rather than without (reservoir).
     /// `0` = false, nonzero = true.
     pub with_replacement: u8,
-    /// Collapse method: an [`St3Collapse`] discriminant.
+    /// Collapse method: an `St3Collapse` value.
     pub collapse: i32,
     /// Run leave-one-out source prediction rather than sink prediction.
     /// `0` = false, nonzero = true.
@@ -137,7 +136,7 @@ pub struct St3Config {
     /// Emit the per-sink source × taxon assignment tally. `0` = false, nonzero =
     /// true.
     pub contingency: u8,
-    /// Estimator kind: an [`St3EstimatorKind`] discriminant.
+    /// Estimator kind: an `St3EstimatorKind` value.
     pub estimator: i32,
     /// Dirichlet prior count per feature in the source environments.
     pub alpha1: f64,
