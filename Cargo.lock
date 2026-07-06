@@ -1072,6 +1072,7 @@ name = "st3-arrow"
 version = "0.0.0"
 dependencies = [
  "arrow",
+ "criterion",
  "st3-core",
 ]
 
@@ -1094,6 +1095,7 @@ dependencies = [
  "rand_distr",
  "rand_xoshiro",
  "rayon",
+ "serde_json",
 ]
 
 [[package]]

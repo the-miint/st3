@@ -15,7 +15,10 @@ rayon = { workspace = true }
 
 [dev-dependencies]
 criterion.workspace = true
+# Parses criterion's estimates.json in the opt-in wall-clock perf guard
+# (`tests/perf_guard.rs`, `#[ignore]`d).
+serde_json.workspace = true
 
 [[bench]]
-name = "smoke"
+name = "kernels"
 harness = false

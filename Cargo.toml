@@ -16,6 +16,10 @@ authors = ["The SourceTracker3 Development Team"]
 [workspace.dependencies]
 # Shared pins.
 criterion = "0.8"
+# JSON parsing for the opt-in wall-clock perf guard (M11). It reads criterion's
+# `target/criterion/**/estimates.json` and compares each bench's mean against the
+# committed `perf/baseline.json`. Dev-dependency only — never in a shipped crate.
+serde_json = "1"
 # Arrow data boundary. Only safe array/schema/RecordBatch construction is used in
 # st3-arrow, which needs no feature, so default features are off. The C Data
 # Interface features (`ffi`/`ffi_stream`) are enabled by st3-capi (M10), which

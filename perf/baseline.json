@@ -1,0 +1,14 @@
+{
+  "arrow/contingency_drain": 27463.5,
+  "arrow/import": 31082.2,
+  "arrow/means_batch": 453.7,
+  "arrow/stds_batch": 417.1,
+  "predict_loo": 14965546.1,
+  "predict_sinks/medium": 42027690.6,
+  "predict_sinks/small": 10778770.5,
+  "predict_sinks_contingency/off": 23610246.2,
+  "predict_sinks_contingency/on": 24173709.6,
+  "predict_sinks_parallel/all_cores": 7500506.5,
+  "predict_sinks_parallel/serial": 88757921.2,
+  "rarefy_per_sample": 135647.1
+}

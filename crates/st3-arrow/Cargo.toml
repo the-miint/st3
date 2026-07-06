@@ -10,3 +10,12 @@ description = "SourceTracker3 Arrow boundary: COO <-> core conversion."
 [dependencies]
 st3-core.workspace = true
 arrow = { workspace = true }
+
+[dev-dependencies]
+# The Arrow import/export round-trip benchmark (M11). `arrow` is already a normal
+# dependency, so the bench can build `StructArray`/`RecordBatch` inputs directly.
+criterion.workspace = true
+
+[[bench]]
+name = "roundtrip"
+harness = false
