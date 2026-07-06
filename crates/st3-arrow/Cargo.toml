@@ -5,7 +5,8 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "SourceTracker3 Arrow boundary: COO <-> core conversion. Arrow deps land in the Arrow milestone."
+description = "SourceTracker3 Arrow boundary: COO <-> core conversion."
 
 [dependencies]
 st3-core.workspace = true
+arrow = { workspace = true }
