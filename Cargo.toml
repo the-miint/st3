@@ -14,9 +14,13 @@ license = "BSD-3-Clause"
 authors = ["The SourceTracker3 Development Team"]
 
 [workspace.dependencies]
-# Shared pins. Heavier deps (arrow, rayon, cbindgen) are introduced in the
-# milestones that first use them; only what is needed so far is declared here.
+# Shared pins. Heavier deps (arrow, cbindgen) are introduced in the milestones
+# that first use them; only what is needed so far is declared here.
 criterion = "0.8"
+# Per-sink / per-fold parallelism (M8). A per-call scoped ThreadPool sized by
+# `jobs` keeps the library reentrant; output is seeded per work-item, so it stays
+# byte-identical across thread counts.
+rayon = "1.12"
 # Rarefaction RNG (M3). rand, rand_xoshiro, rand_distr, and rand_core all resolve
 # to rand_core 0.10.x. WeightedIndex lives in rand::distr::weighted (alloc). The
 # eval module (M7) additionally samples the Dirichlet distribution, which lives in

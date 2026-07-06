@@ -119,6 +119,12 @@ pub enum Error {
         /// Index (into the sample axis) of the empty sink.
         sample_index: usize,
     },
+    /// The scoped worker thread pool could not be built (e.g. the OS refused to
+    /// spawn threads).
+    ThreadPool {
+        /// The underlying builder error, rendered for display.
+        reason: String,
+    },
 }
 
 impl fmt::Display for Error {
@@ -168,6 +174,9 @@ impl fmt::Display for Error {
                 f,
                 "the sink sample at index {sample_index} has no sequences."
             ),
+            Error::ThreadPool { reason } => {
+                write!(f, "could not build the worker thread pool: {reason}.")
+            }
         }
     }
 }
@@ -216,6 +225,9 @@ mod tests {
                 reason: "must be finite",
             },
             Error::EmptySink { sample_index: 3 },
+            Error::ThreadPool {
+                reason: "no threads".into(),
+            },
         ];
         for e in &variants {
             assert!(!e.to_string().trim().is_empty());

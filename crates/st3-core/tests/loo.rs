@@ -62,6 +62,7 @@ fn loo_means_match_oracle_on_both_fixtures() {
             &ctx,
             &reference_params(CollapseMethod::Sum, false),
             42,
+            1,
         )
         .expect("predict_loo");
         let expected = load_matrix(&dir.join("expected_loo_sum.tsv"));
@@ -100,6 +101,7 @@ fn tiny_test_sole_drainwater_column_is_exact_zero() {
         &ctx,
         &reference_params(CollapseMethod::Sum, false),
         42,
+        1,
     )
     .expect("predict_loo");
 
@@ -135,6 +137,7 @@ fn tiny_test_columns_are_source_scoped() {
         &ctx,
         &reference_params(CollapseMethod::Sum, false),
         42,
+        1,
     )
     .expect("predict_loo");
 
@@ -151,4 +154,26 @@ fn tiny_test_columns_are_source_scoped() {
         );
     }
     assert!(sm.contingency().is_none());
+}
+
+// Determinism guard (roadmap R8) on real data: LOO output is byte-identical
+// across thread counts on both fixtures.
+#[test]
+fn loo_output_is_identical_across_job_counts() {
+    for fixture in ["synthetic_small", "tiny_test"] {
+        let dir = fixtures_dir().join(fixture);
+        let table = build_table(&load_matrix(&dir.join("table.tsv")));
+        let ctx = build_context(&table, &load_metadata(&dir.join("metadata.tsv")));
+        // Determinism is independent of sampler depth, so use light params to keep
+        // this cross-product (2 fixtures × 4 job counts, folds per fixture) fast.
+        let mut params = reference_params(CollapseMethod::Sum, false);
+        params.restarts = 8;
+        params.draws_per_restart = 2;
+        params.burnin = 10;
+        let serial = predict_loo(&table, &ctx, &params, 42, 1).expect("predict_loo");
+        for jobs in [0usize, 2, 8] {
+            let parallel = predict_loo(&table, &ctx, &params, 42, jobs).expect("predict_loo");
+            assert_eq!(parallel, serial, "{fixture} jobs={jobs}");
+        }
+    }
 }

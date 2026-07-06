@@ -535,6 +535,7 @@ dependencies = [
  "rand",
  "rand_distr",
  "rand_xoshiro",
+ "rayon",
 ]
 
 [[package]]

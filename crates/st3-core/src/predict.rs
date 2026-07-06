@@ -21,6 +21,7 @@ use crate::collate::{SourceMixing, collate};
 use crate::error::{Error, Result};
 use crate::estimate::{GibbsEstimator, SinkModel, SinkVec};
 use crate::metadata::SampleContext;
+use crate::parallel::map_items;
 use crate::params::GibbsParams;
 use crate::rng::rng_for_item;
 use crate::table::CountTable;
@@ -33,14 +34,21 @@ use crate::table::CountTable;
 /// included in the result. Sinks are seeded by their position in
 /// [`SampleContext::sink_indices`].
 ///
+/// `jobs` sizes a per-call scoped worker pool: `0` uses all logical cores, `1`
+/// runs serially, and `n` uses `n` threads. Because each sink is seeded from
+/// `(seed, position)` alone and results are collated in sink order, the output is
+/// byte-identical regardless of `jobs`.
+///
 /// # Errors
-/// [`Error::EmptySink`] if a sink column has no sequences; propagates
-/// [`collapse_sources`] and [`GibbsEstimator::prepare`] (parameter validation).
+/// [`Error::EmptySink`] if a sink column has no sequences (the lowest-index empty
+/// sink, independent of `jobs`); propagates [`collapse_sources`],
+/// [`GibbsEstimator::prepare`] (parameter validation), and [`Error::ThreadPool`].
 pub fn predict_sinks(
     table: &CountTable,
     ctx: &SampleContext,
     params: &GibbsParams,
     seed: u64,
+    jobs: usize,
 ) -> Result<SourceMixing> {
     let sources = collapse_sources(table, ctx, params.collapse)?;
     let prep = GibbsEstimator::prepare(&sources, params)?;
@@ -50,10 +58,10 @@ pub fn predict_sinks(
     env_names.push("Unknown".to_string());
 
     let sink_cols = ctx.sink_indices();
-    let mut estimates = Vec::with_capacity(sink_cols.len());
-    let mut sink_ids = Vec::with_capacity(sink_cols.len());
-    for (item_index, &sink_col) in sink_cols.iter().enumerate() {
-        let s = sink_col as usize;
+    // Each sink is an independent work item seeded by its position, so the fan-out
+    // is deterministic across thread counts (see `crate::parallel`).
+    let pairs = map_items(jobs, sink_cols.len(), |item_index| {
+        let s = sink_cols[item_index] as usize;
         if table.column_sum(s) == 0 {
             return Err(Error::EmptySink { sample_index: s });
         }
@@ -61,9 +69,9 @@ pub fn predict_sinks(
         let sink = SinkVec::new(rows, counts);
         let mut rng = rng_for_item(seed, item_index as u64);
         let est = GibbsEstimator::estimate(&prep, &sink, params, &mut rng, params.contingency);
-        estimates.push(est);
-        sink_ids.push(table.sample_ids()[s].clone());
-    }
+        Ok((est, table.sample_ids()[s].clone()))
+    })?;
+    let (estimates, sink_ids): (Vec<_>, Vec<_>) = pairs.into_iter().unzip();
 
     Ok(collate(&estimates, sink_ids, env_names))
 }
@@ -122,7 +130,8 @@ mod tests {
             ("empty", Role::Sink, None, &[0, 0]),
         ]);
         // The empty sink is the third column (index 2).
-        let err = predict_sinks(&table, &ctx, &params(CollapseMethod::Sum, false), 42).unwrap_err();
+        let err =
+            predict_sinks(&table, &ctx, &params(CollapseMethod::Sum, false), 42, 1).unwrap_err();
         assert_eq!(err, Error::EmptySink { sample_index: 2 });
     }
 
@@ -134,7 +143,7 @@ mod tests {
             ("s0", Role::Sink, None, &[8, 2]),
             ("s1", Role::Sink, None, &[3, 7]),
         ]);
-        let sm = predict_sinks(&table, &ctx, &params(CollapseMethod::Sum, false), 7).unwrap();
+        let sm = predict_sinks(&table, &ctx, &params(CollapseMethod::Sum, false), 7, 1).unwrap();
         assert_eq!(sm.n_sinks(), 2);
         assert_eq!(sm.n_envs(), 3); // envA, envB, Unknown
         assert_eq!(sm.env_names(), &["envA", "envB", "Unknown"]);
@@ -156,10 +165,50 @@ mod tests {
             ("s0", Role::Sink, None, &[8, 2]),
         ]);
         let p = params(CollapseMethod::Sum, false);
-        let a = predict_sinks(&table, &ctx, &p, 99).unwrap();
-        let b = predict_sinks(&table, &ctx, &p, 99).unwrap();
+        let a = predict_sinks(&table, &ctx, &p, 99, 1).unwrap();
+        let b = predict_sinks(&table, &ctx, &p, 99, 1).unwrap();
         assert_eq!(a.means(), b.means());
         assert_eq!(a.stds(), b.stds());
+    }
+
+    #[test]
+    fn output_is_identical_across_job_counts() {
+        // Determinism guard (roadmap R8): the same seed must produce byte-identical
+        // output at any thread count. Contingency on, to cover that path too.
+        let (table, ctx) = build(&[
+            ("a", Role::Source, Some("envA"), &[10, 0, 1]),
+            ("b", Role::Source, Some("envB"), &[0, 10, 1]),
+            ("c", Role::Source, Some("envC"), &[1, 1, 10]),
+            ("s0", Role::Sink, None, &[8, 2, 1]),
+            ("s1", Role::Sink, None, &[3, 7, 2]),
+            ("s2", Role::Sink, None, &[1, 1, 9]),
+            ("s3", Role::Sink, None, &[4, 4, 4]),
+        ]);
+        let p = params(CollapseMethod::Sum, true);
+        let serial = predict_sinks(&table, &ctx, &p, 2024, 1).unwrap();
+        for jobs in [0usize, 2, 8] {
+            let parallel = predict_sinks(&table, &ctx, &p, 2024, jobs).unwrap();
+            assert_eq!(parallel, serial, "jobs={jobs} diverged from serial");
+        }
+    }
+
+    #[test]
+    fn empty_sink_error_is_deterministic_across_jobs() {
+        // Two empty sinks; the lowest-index one must always be reported.
+        let (table, ctx) = build(&[
+            ("a", Role::Source, Some("envA"), &[10, 0]),
+            ("b", Role::Source, Some("envB"), &[0, 10]),
+            ("s0", Role::Sink, None, &[5, 5]),
+            ("empty1", Role::Sink, None, &[0, 0]),
+            ("s2", Role::Sink, None, &[2, 8]),
+            ("empty2", Role::Sink, None, &[0, 0]),
+        ]);
+        let p = params(CollapseMethod::Sum, false);
+        for jobs in [1usize, 4] {
+            let err = predict_sinks(&table, &ctx, &p, 7, jobs).unwrap_err();
+            // empty1 is table column 3 (lowest-index empty sink).
+            assert_eq!(err, Error::EmptySink { sample_index: 3 }, "jobs={jobs}");
+        }
     }
 
     #[test]
@@ -169,7 +218,7 @@ mod tests {
             ("b", Role::Source, Some("envB"), &[0, 10]),
             ("s0", Role::Sink, None, &[8, 2]),
         ]);
-        let sm = predict_sinks(&table, &ctx, &params(CollapseMethod::Sum, true), 1).unwrap();
+        let sm = predict_sinks(&table, &ctx, &params(CollapseMethod::Sum, true), 1, 1).unwrap();
         let tallies = sm.contingency().expect("contingency requested");
         assert_eq!(tallies.len(), 1);
         // Grand total of the tally equals the sink depth (8 + 2 = 10).

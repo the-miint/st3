@@ -41,9 +41,18 @@ use crate::collate::{SourceMixing, mean_std_over_ensemble};
 use crate::error::{Error, Result};
 use crate::estimate::{GibbsEstimator, SinkModel, SinkVec};
 use crate::metadata::SampleContext;
+use crate::parallel::map_items;
 use crate::params::GibbsParams;
 use crate::rng::rng_for_item;
 use crate::table::CountTable;
+
+/// One fold's aligned result: the held-out sample's mean and std rows over the
+/// fixed full frame, plus its id. Returned per fold and assembled in fold order.
+struct FoldRow {
+    mean_row: Vec<f64>,
+    std_row: Vec<f64>,
+    sink_id: String,
+}
 
 /// Leave-one-out source prediction over every source sample in `ctx`.
 ///
@@ -56,16 +65,23 @@ use crate::table::CountTable;
 /// `env_names` are the full frame, and its `contingency` is always `None`
 /// (LOO does not produce assignment tallies).
 ///
+/// `jobs` sizes a per-call scoped worker pool: `0` uses all logical cores, `1`
+/// runs serially, and `n` uses `n` threads. Each fold is seeded from `(seed, k)`
+/// and rows are assembled in fold order, so the output is byte-identical
+/// regardless of `jobs`.
+///
 /// # Errors
 /// [`Error::EmptySink`] if a held-out source column has no sequences; propagates
 /// [`collapse_subset`] ([`Error::NoSources`] when only a single source sample
-/// exists in total, so nothing remains after holding it out) and
-/// [`GibbsEstimator::prepare`] (parameter validation).
+/// exists in total, so nothing remains after holding it out),
+/// [`GibbsEstimator::prepare`] (parameter validation), and [`Error::ThreadPool`].
+/// The lowest-index fold's error is returned, independent of `jobs`.
 pub fn predict_loo(
     table: &CountTable,
     ctx: &SampleContext,
     params: &GibbsParams,
     seed: u64,
+    jobs: usize,
 ) -> Result<SourceMixing> {
     let source_indices = ctx.source_indices();
     let source_envs = ctx.source_envs();
@@ -86,12 +102,10 @@ pub fn predict_loo(
     let mut env_names: Vec<String> = e.iter().map(|&s| s.to_string()).collect();
     env_names.push("Unknown".to_string());
 
-    let n_folds = source_indices.len();
-    let mut means = Vec::with_capacity(n_folds * v_full);
-    let mut stds = Vec::with_capacity(n_folds * v_full);
-    let mut sink_ids = Vec::with_capacity(n_folds);
-
-    for (k, &h) in source_indices.iter().enumerate() {
+    // Each fold is an independent work item: hold out source `k`, re-collapse the
+    // rest, estimate, and scatter into the full frame. `map_items` runs the folds
+    // over the scoped pool and returns them in fold order (see `crate::parallel`).
+    let rows = map_items(jobs, source_indices.len(), |k| {
         // Reduced sources: the remaining (index, env) pairs, dropping fold k.
         // Re-collapsed every fold because the source set changes each time. The
         // two parallel slices are filtered in one pass so the fold-exclusion
@@ -106,7 +120,7 @@ pub fn predict_loo(
         let reduced_sources = collapse_subset(table, &reduced_idx, &reduced_env, params.collapse)?;
 
         // The held-out sample becomes the sink for this fold.
-        let hs = h as usize;
+        let hs = source_indices[k] as usize;
         if table.column_sum(hs) == 0 {
             return Err(Error::EmptySink { sample_index: hs });
         }
@@ -123,19 +137,24 @@ pub fn predict_loo(
         let v_reduced = reduced_sources.n_sources() + 1;
         let (mean_k, std_k) = mean_std_over_ensemble(est.ensemble(), v_reduced);
         let reduced_env_names = reduced_sources.env_names();
-        means.extend_from_slice(&scatter_into_frame(
-            reduced_env_names,
-            &mean_k,
-            &full_col,
-            v_full,
-        ));
-        stds.extend_from_slice(&scatter_into_frame(
-            reduced_env_names,
-            &std_k,
-            &full_col,
-            v_full,
-        ));
-        sink_ids.push(table.sample_ids()[hs].clone());
+        let mean_row = scatter_into_frame(reduced_env_names, &mean_k, &full_col, v_full);
+        let std_row = scatter_into_frame(reduced_env_names, &std_k, &full_col, v_full);
+        Ok(FoldRow {
+            mean_row,
+            std_row,
+            sink_id: table.sample_ids()[hs].clone(),
+        })
+    })?;
+
+    // Assemble the fold rows (in order) into the dense sink-major matrices.
+    let n_folds = rows.len();
+    let mut means = Vec::with_capacity(n_folds * v_full);
+    let mut stds = Vec::with_capacity(n_folds * v_full);
+    let mut sink_ids = Vec::with_capacity(n_folds);
+    for row in rows {
+        means.extend_from_slice(&row.mean_row);
+        stds.extend_from_slice(&row.std_row);
+        sink_ids.push(row.sink_id);
     }
 
     Ok(SourceMixing::from_parts(
@@ -266,7 +285,7 @@ mod tests {
             ("b1", Role::Source, Some("envB"), &[0, 0, 100, 100]),
             ("b2", Role::Source, Some("envB"), &[0, 0, 90, 110]),
         ]);
-        let sm = predict_loo(&table, &ctx, &params(CollapseMethod::Sum), 42).unwrap();
+        let sm = predict_loo(&table, &ctx, &params(CollapseMethod::Sum), 42, 1).unwrap();
 
         assert_eq!(sm.n_sinks(), 4);
         assert_eq!(sm.env_names(), &["envA", "envB", "Unknown"]);
@@ -303,7 +322,7 @@ mod tests {
             ("y1", Role::Source, Some("Y"), &[0, 0, 100, 100]),
             ("y2", Role::Source, Some("Y"), &[0, 0, 90, 110]),
         ]);
-        let sm = predict_loo(&table, &ctx, &params(CollapseMethod::Sum), 42).unwrap();
+        let sm = predict_loo(&table, &ctx, &params(CollapseMethod::Sum), 42, 1).unwrap();
 
         // Full frame keeps X even though it vanishes when x1 is held out.
         assert_eq!(sm.env_names(), &["X", "Y", "Unknown"]);
@@ -325,7 +344,7 @@ mod tests {
             ("z", Role::Source, Some("envB"), &[0, 0]),
             ("c", Role::Source, Some("envA"), &[5, 5]),
         ]);
-        let err = predict_loo(&table, &ctx, &params(CollapseMethod::Sum), 42).unwrap_err();
+        let err = predict_loo(&table, &ctx, &params(CollapseMethod::Sum), 42, 1).unwrap_err();
         assert_eq!(err, Error::EmptySink { sample_index: 1 });
     }
 
@@ -339,10 +358,46 @@ mod tests {
             ("b2", Role::Source, Some("envB"), &[2, 8]),
         ]);
         let p = params(CollapseMethod::Sum);
-        let a = predict_loo(&table, &ctx, &p, 99).unwrap();
-        let b = predict_loo(&table, &ctx, &p, 99).unwrap();
+        let a = predict_loo(&table, &ctx, &p, 99, 1).unwrap();
+        let b = predict_loo(&table, &ctx, &p, 99, 1).unwrap();
         assert_eq!(a.means(), b.means());
         assert_eq!(a.stds(), b.stds());
+    }
+
+    // Determinism guard (roadmap R8): identical output at any thread count.
+    #[test]
+    fn output_is_identical_across_job_counts() {
+        let (table, ctx) = build(&[
+            ("a1", Role::Source, Some("envA"), &[100, 100, 0, 0]),
+            ("a2", Role::Source, Some("envA"), &[110, 90, 0, 0]),
+            ("b1", Role::Source, Some("envB"), &[0, 0, 100, 100]),
+            ("b2", Role::Source, Some("envB"), &[0, 0, 90, 110]),
+            ("c1", Role::Source, Some("envC"), &[50, 0, 50, 0]),
+        ]);
+        let p = params(CollapseMethod::Sum);
+        let serial = predict_loo(&table, &ctx, &p, 2024, 1).unwrap();
+        for jobs in [0usize, 2, 8] {
+            let parallel = predict_loo(&table, &ctx, &p, 2024, jobs).unwrap();
+            assert_eq!(parallel, serial, "jobs={jobs} diverged from serial");
+        }
+    }
+
+    // The lowest-index held-out empty source is reported regardless of jobs.
+    #[test]
+    fn empty_held_out_error_is_deterministic_across_jobs() {
+        // Folds run over source_indices ascending: a(0), z1(1), c(2), z2(3).
+        // z1 and z2 are empty source columns; the lowest fold (z1, index 1) wins.
+        let (table, ctx) = build(&[
+            ("a", Role::Source, Some("envA"), &[10, 0]),
+            ("z1", Role::Source, Some("envB"), &[0, 0]),
+            ("c", Role::Source, Some("envA"), &[5, 5]),
+            ("z2", Role::Source, Some("envB"), &[0, 0]),
+        ]);
+        let p = params(CollapseMethod::Sum);
+        for jobs in [1usize, 4] {
+            let err = predict_loo(&table, &ctx, &p, 7, jobs).unwrap_err();
+            assert_eq!(err, Error::EmptySink { sample_index: 1 }, "jobs={jobs}");
+        }
     }
 
     // Single source sample total -> nothing remains after holding it out.
@@ -352,7 +407,7 @@ mod tests {
             ("only", Role::Source, Some("envA"), &[10, 5]),
             ("sink", Role::Sink, None, &[3, 3]),
         ]);
-        let err = predict_loo(&table, &ctx, &params(CollapseMethod::Sum), 1).unwrap_err();
+        let err = predict_loo(&table, &ctx, &params(CollapseMethod::Sum), 1, 1).unwrap_err();
         assert_eq!(err, Error::NoSources);
     }
 
@@ -366,7 +421,7 @@ mod tests {
         ]);
         let mut p = params(CollapseMethod::Sum);
         p.contingency = true; // must be ignored
-        let sm = predict_loo(&table, &ctx, &p, 5).unwrap();
+        let sm = predict_loo(&table, &ctx, &p, 5, 1).unwrap();
         assert!(sm.contingency().is_none());
     }
 }

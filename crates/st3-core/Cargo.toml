@@ -11,6 +11,7 @@ description = "SourceTracker3 core: preprocessing, the Gibbs estimator, and coll
 rand = { workspace = true }
 rand_xoshiro = { workspace = true }
 rand_distr = { workspace = true }
+rayon = { workspace = true }
 
 [dev-dependencies]
 criterion.workspace = true

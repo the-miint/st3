@@ -30,6 +30,7 @@ fn contingency_run(fixture: &str) -> (CountTable, SampleContext, SourceMixing) {
         &ctx,
         &reference_params(CollapseMethod::Sum, true),
         42,
+        1,
     )
     .expect("predict");
     (table, ctx, sm)
@@ -81,7 +82,8 @@ fn assert_matches_oracle(
     let table = build_table(&load_matrix(&dir.join("table.tsv")));
     let ctx = build_context(&table, &load_metadata(&dir.join("metadata.tsv")));
 
-    let sm = predict_sinks(&table, &ctx, &reference_params(collapse, false), 42).expect("predict");
+    let sm =
+        predict_sinks(&table, &ctx, &reference_params(collapse, false), 42, 1).expect("predict");
 
     let expected_mean = load_matrix(&dir.join(mean_file));
     let expected_sd = sd_file.map(|f| load_matrix(&dir.join(f)));
@@ -157,9 +159,34 @@ fn contingency_off_yields_no_tally() {
         &ctx,
         &reference_params(CollapseMethod::Sum, false),
         42,
+        1,
     )
     .unwrap();
     assert!(sm.contingency().is_none());
+}
+
+#[test]
+fn output_is_identical_across_job_counts_on_fixtures() {
+    // Roadmap R8 on real data: byte-identical SourceMixing across thread counts,
+    // for both collapse modes, with contingency on.
+    for fixture in ["synthetic_small", "tiny_test"] {
+        let dir = fixtures_dir().join(fixture);
+        let table = build_table(&load_matrix(&dir.join("table.tsv")));
+        let ctx = build_context(&table, &load_metadata(&dir.join("metadata.tsv")));
+        for collapse in [CollapseMethod::Sum, CollapseMethod::Mean] {
+            // Determinism is independent of sampler depth, so use light params to
+            // keep this cross-product (2 fixtures × 2 modes × 4 job counts) fast.
+            let mut params = reference_params(collapse, true);
+            params.restarts = 8;
+            params.draws_per_restart = 2;
+            params.burnin = 10;
+            let serial = predict_sinks(&table, &ctx, &params, 42, 1).expect("predict");
+            for jobs in [0usize, 2, 8] {
+                let parallel = predict_sinks(&table, &ctx, &params, 42, jobs).expect("predict");
+                assert_eq!(parallel, serial, "{fixture} {collapse:?} jobs={jobs}");
+            }
+        }
+    }
 }
 
 #[test]

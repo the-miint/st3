@@ -398,7 +398,9 @@ pub fn run_two_source_recovery(
     seed: u64,
 ) -> Result<RecoveryScore> {
     let sim = simulate_two_source(cfg, seed)?;
-    let mixing = predict_sinks(sim.table(), sim.context(), params, seed)?;
+    // Each scenario runs serially; a tuner parallelizes across the scenario grid
+    // instead, which avoids nested pools and keeps per-scenario cost predictable.
+    let mixing = predict_sinks(sim.table(), sim.context(), params, seed, 1)?;
     Ok(score_recovery(&sim, &mixing))
 }
 

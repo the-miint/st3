@@ -36,6 +36,7 @@ pub mod estimate;
 pub mod eval;
 pub mod loo;
 pub mod metadata;
+mod parallel;
 pub mod params;
 pub mod predict;
 pub mod rarefy;
