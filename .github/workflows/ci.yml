@@ -1,0 +1,98 @@
+# The same green gate that `.githooks/pre-commit` enforces locally, run on
+# GitHub so a push that bypasses the hook (or a clone that never enabled it)
+# still gets checked.
+#
+# Deliberately NOT here: `make perf-guard`. It compares wall-clock benchmark
+# means against the committed `perf/baseline.json`, which is reference-machine
+# relative and so meaningless on a shared runner. The machine-independent
+# regression net -- the allocation guard -- runs inside `make test`.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A newer push to the same ref supersedes an older, still-running check.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gate:
+    name: Green gate (stable)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # rustfmt and clippy are needed by the first two gate steps; the C example
+      # test shells out to `cc`, which ubuntu-latest already provides.
+      - name: Install stable toolchain
+        run: |
+          rustup toolchain install stable --profile minimal \
+            --component rustfmt --component clippy
+          rustup default stable
+          rustc --version && cargo --version
+
+      - name: Cache cargo registry and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-stable-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-stable-
+
+      # Fails if Cargo.lock is stale, so the lock stays an accurate record of
+      # what the gate actually resolved.
+      - name: Verify Cargo.lock is current
+        run: cargo metadata --locked --format-version 1 > /dev/null
+
+      # fmt --check, clippy -D warnings, the workspace test suite (unit,
+      # integration, doctests, and the compiled C example), a docs build with
+      # warnings denied, and a benchmark compile check.
+      - name: make test
+        run: make test
+
+  msrv:
+    name: MSRV (1.85, library only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the declared MSRV toolchain
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal
+          rustup default 1.85.0
+
+      - name: Cache cargo registry and build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-msrv-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-msrv-
+
+      # Library targets only -- no `--all-targets`. `rust-version = "1.85"` is a
+      # promise to *consumers*, and dev-dependencies are not part of that
+      # promise: criterion 0.8 requires 1.86, so building the benches and tests
+      # needs a newer toolchain than depending on the crates does. The `gate`
+      # job above covers those targets on stable.
+      #
+      # The floor is 1.85 rather than edition 2021's own 1.56 because cbindgen
+      # pulls in toml_writer, an edition-2024 crate; Cargo must understand
+      # edition 2024 to parse the graph at all.
+      - name: cargo check (library targets)
+        run: cargo check --workspace --all-features --locked

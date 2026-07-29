@@ -67,7 +67,19 @@ Rust consumers depend on `st3-core` directly; the flagship entry points
 
 `make test` runs the full gate: formatting, `clippy -D warnings`, the workspace
 test suite (unit, integration, doctests, and the C example), a documentation
-build with warnings denied, and a benchmark compile check.
+build with warnings denied, and a benchmark compile check. The same gate runs in
+CI on every push and pull request to `main`.
+
+A `pre-commit` hook runs that gate before each commit. Git does not pick it up
+from a fresh clone automatically — enable it once per checkout:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+The minimum supported Rust version is **1.85** for depending on the crates. The
+benches and tests need **1.86** (criterion 0.8's own floor), so `make test`
+requires 1.86 or newer.
 
 ## License
 
