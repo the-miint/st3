@@ -163,7 +163,7 @@ pub(crate) fn fill_jp(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::collapse::{CollapseMethod, collapse_subset};
+    use crate::collapse::{collapse_subset, CollapseMethod};
     use crate::table::CountTable;
 
     /// Build [`CollapsedSources`] with one column per environment straight from

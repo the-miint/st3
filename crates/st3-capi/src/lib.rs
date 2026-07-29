@@ -26,15 +26,15 @@ mod status;
 use arrow::array::RecordBatch;
 use arrow::ffi::{FFI_ArrowArray, FFI_ArrowSchema};
 use arrow::ffi_stream::FFI_ArrowArrayStream;
-use st3_core::{CountTable, Rarefied, SourceMixing, predict_loo, predict_sinks, rarefy_per_sample};
+use st3_core::{predict_loo, predict_sinks, rarefy_per_sample, CountTable, Rarefied, SourceMixing};
 
 use crate::handle::require_ptr;
 use crate::last_error::{clear_last_error, set_last_error};
 use crate::panic::ffi_guard_result;
 use crate::status::{status_of_arrow, status_of_core};
 
-pub use config::{ST3_CONFIG_V1, St3Collapse, St3Config, St3EstimatorKind};
-pub use handle::{St3Result, St3Table, st3_result_free, st3_table_free};
+pub use config::{St3Collapse, St3Config, St3EstimatorKind, ST3_CONFIG_V1};
+pub use handle::{st3_result_free, st3_table_free, St3Result, St3Table};
 pub use last_error::st3_last_error;
 pub use status::St3Status;
 
@@ -509,7 +509,7 @@ mod tests {
 
     /// Re-import an exported dense pair (consuming the array, borrowing the schema).
     fn reimport_batch(array: FFI_ArrowArray, schema: &FFI_ArrowSchema) -> RecordBatch {
-        use arrow::array::{StructArray, make_array};
+        use arrow::array::{make_array, StructArray};
         // SAFETY: `array`/`schema` were produced by this library's own exporter.
         let data = unsafe { arrow::ffi::from_ffi(array, schema) }.unwrap();
         let arr = make_array(data);

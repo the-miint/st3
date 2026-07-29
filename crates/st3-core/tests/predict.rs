@@ -15,9 +15,9 @@ mod common;
 use std::collections::{HashMap, HashSet};
 
 use common::{
-    Matrix, build_context, build_table, fixtures_dir, load_matrix, load_metadata, reference_params,
+    build_context, build_table, fixtures_dir, load_matrix, load_metadata, reference_params, Matrix,
 };
-use st3_core::{CollapseMethod, CountTable, SampleContext, SourceMixing, predict_sinks};
+use st3_core::{predict_sinks, CollapseMethod, CountTable, SampleContext, SourceMixing};
 
 /// Run the full sum-collapse contingency pipeline on `fixture` at the pinned
 /// reference parameters (seed 42), returning the table, context, and result.

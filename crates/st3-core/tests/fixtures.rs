@@ -9,7 +9,7 @@
 
 mod common;
 
-use common::{Matrix, fixtures_dir, load_matrix, load_metadata};
+use common::{fixtures_dir, load_matrix, load_metadata, Matrix};
 use std::path::Path;
 
 /// Proportion matrices are renormalized per row, so each row sums to one.

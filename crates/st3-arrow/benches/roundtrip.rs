@@ -17,10 +17,10 @@ use std::sync::Arc;
 
 use arrow::array::{ArrayRef, Float64Array, Int32Array, RecordBatch, StringArray, StructArray};
 use arrow::datatypes::{DataType, Field, Schema};
-use criterion::{Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion};
 use st3_arrow::{contingency_reader, import, means_batch, stds_batch};
 use st3_core::{
-    CollapseMethod, GibbsParams, Role, SimConfig, Simulation, predict_sinks, simulate_two_source,
+    predict_sinks, simulate_two_source, CollapseMethod, GibbsParams, Role, SimConfig, Simulation,
 };
 
 /// Fixed seed for generation and estimation.

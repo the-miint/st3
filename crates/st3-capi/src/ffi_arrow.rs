@@ -16,8 +16,8 @@
 //! The caller must relinquish the array and not release it again. An imported
 //! **schema** is only *borrowed*; the caller retains and releases it.
 
-use arrow::array::{Array, ArrayRef, RecordBatch, StructArray, make_array};
-use arrow::ffi::{FFI_ArrowArray, FFI_ArrowSchema, from_ffi, to_ffi};
+use arrow::array::{make_array, Array, ArrayRef, RecordBatch, StructArray};
+use arrow::ffi::{from_ffi, to_ffi, FFI_ArrowArray, FFI_ArrowSchema};
 use arrow::ffi_stream::FFI_ArrowArrayStream;
 use st3_arrow::ContingencyReader;
 use st3_core::{CountTable, SampleContext};
@@ -25,7 +25,7 @@ use st3_core::{CountTable, SampleContext};
 use crate::handle::require_ptr;
 use crate::last_error::set_last_error;
 use crate::panic::PanicGuardReader;
-use crate::status::{St3Status, status_of_arrow};
+use crate::status::{status_of_arrow, St3Status};
 
 /// Convert an already-owned FFI array (with its still-borrowed schema) into a
 /// safe [`ArrayRef`].

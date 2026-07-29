@@ -220,7 +220,7 @@ pub fn contingency_reader(mixing: &SourceMixing) -> Option<ContingencyReader> {
 mod tests {
     use super::*;
     use st3_core::{
-        CollapseMethod, CountTable, GibbsParams, Role, SampleContext, SourceMixing, predict_sinks,
+        predict_sinks, CollapseMethod, CountTable, GibbsParams, Role, SampleContext, SourceMixing,
     };
 
     /// Light, deterministic sampler params (fast; behaviour is seed-fixed).

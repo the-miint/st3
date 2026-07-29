@@ -10,7 +10,7 @@
 //! the current thread's message (or null).
 
 use std::cell::RefCell;
-use std::ffi::{CString, c_char};
+use std::ffi::{c_char, CString};
 use std::fmt::Display;
 
 thread_local! {

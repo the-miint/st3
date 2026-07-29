@@ -25,8 +25,8 @@
 //! systematic Unknown-mass offset, → 0 as recovery decorrelates from truth), and
 //! **JSD** is in bits (base-2, ∈ [0, 1]).
 
+use rand::distr::{weighted::WeightedIndex, Distribution};
 use rand::RngExt;
-use rand::distr::{Distribution, weighted::WeightedIndex};
 use rand_distr::multi::Dirichlet;
 
 use crate::collate::SourceMixing;
@@ -34,7 +34,7 @@ use crate::error::{Error, Result};
 use crate::metadata::{Role, SampleContext};
 use crate::params::GibbsParams;
 use crate::predict::predict_sinks;
-use crate::rng::{ItemRng, rng_for_item};
+use crate::rng::{rng_for_item, ItemRng};
 use crate::table::CountTable;
 
 /// Environment label of the source [`Simulation::truth`] measures the fraction of.
@@ -398,7 +398,11 @@ pub(crate) fn score_recovery(sim: &Simulation, mixing: &SourceMixing) -> Recover
             let known = a + b;
             // Renormalize over the two known envs; a neutral 0.5 if all mass fled
             // to Unknown (uninformative for this sink).
-            if known < 1e-9 { 0.5 } else { a / known }
+            if known < 1e-9 {
+                0.5
+            } else {
+                a / known
+            }
         })
         .collect();
 

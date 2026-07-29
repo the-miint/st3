@@ -25,11 +25,11 @@
 //! stream; equivalence is statistical (means converge) and the golden test pins
 //! *our* stream.
 
-use rand::RngExt;
 use rand::seq::SliceRandom;
+use rand::RngExt;
 
 use crate::collapse::CollapsedSources;
-use crate::cp::{ConditionalProbability, JpTerms, fill_jp};
+use crate::cp::{fill_jp, ConditionalProbability, JpTerms};
 use crate::error::Result;
 use crate::params::GibbsParams;
 use crate::rng::ItemRng;
@@ -339,7 +339,7 @@ fn draw_env(jp: &[f64], total: f64, rng: &mut ItemRng) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::collapse::{CollapseMethod, collapse_subset};
+    use crate::collapse::{collapse_subset, CollapseMethod};
     use crate::rng::rng_for_item;
     use crate::table::CountTable;
 

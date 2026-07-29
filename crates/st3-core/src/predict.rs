@@ -17,7 +17,7 @@
 //! separate driver (a later milestone).
 
 use crate::collapse::collapse_sources;
-use crate::collate::{SourceMixing, collate};
+use crate::collate::{collate, SourceMixing};
 use crate::error::{Error, Result};
 use crate::estimate::{GibbsEstimator, SinkModel, SinkVec};
 use crate::metadata::SampleContext;

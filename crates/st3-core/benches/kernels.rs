@@ -22,10 +22,10 @@
 
 use std::hint::black_box;
 
-use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use st3_core::{
-    CollapseMethod, GibbsParams, SimConfig, Simulation, predict_loo, predict_sinks,
-    rarefy_per_sample, simulate_two_source,
+    predict_loo, predict_sinks, rarefy_per_sample, simulate_two_source, CollapseMethod,
+    GibbsParams, SimConfig, Simulation,
 };
 
 /// A fixed seed for both generation and estimation across every bench.

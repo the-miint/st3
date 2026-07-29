@@ -37,7 +37,7 @@
 use std::collections::{BTreeSet, HashMap};
 
 use crate::collapse::collapse_subset;
-use crate::collate::{SourceMixing, mean_std_over_ensemble};
+use crate::collate::{mean_std_over_ensemble, SourceMixing};
 use crate::error::{Error, Result};
 use crate::estimate::{GibbsEstimator, SinkModel, SinkVec};
 use crate::metadata::SampleContext;

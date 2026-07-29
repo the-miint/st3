@@ -11,7 +11,7 @@
 //! C Data Interface, and that call must not unwind either.
 
 use std::any::Any;
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use arrow::array::{RecordBatch, RecordBatchReader};
 use arrow::datatypes::SchemaRef;

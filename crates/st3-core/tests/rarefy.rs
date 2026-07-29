@@ -9,7 +9,7 @@
 mod common;
 
 use common::{build_table, fixtures_dir, load_matrix};
-use st3_core::{CountTable, SampleStatus, rarefy, rarefy_per_sample};
+use st3_core::{rarefy, rarefy_per_sample, CountTable, SampleStatus};
 
 fn tiny_table() -> CountTable {
     build_table(&load_matrix(&fixtures_dir().join("tiny_test/table.tsv")))

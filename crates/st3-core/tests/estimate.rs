@@ -16,8 +16,8 @@ use common::{
     build_context, build_table, fixtures_dir, load_matrix, load_metadata, reference_params,
 };
 use st3_core::{
-    CollapseMethod, GibbsEstimator, SinkEstimate, SinkModel, SinkVec, collapse_sources,
-    rng_for_item,
+    collapse_sources, rng_for_item, CollapseMethod, GibbsEstimator, SinkEstimate, SinkModel,
+    SinkVec,
 };
 
 /// Mean of the ensemble's proportion vectors (length `v`).

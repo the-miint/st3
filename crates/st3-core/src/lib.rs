@@ -87,20 +87,20 @@ mod rarefy;
 mod rng;
 mod table;
 
-pub use collapse::{CollapseMethod, CollapsedSources, collapse_sources, collapse_subset};
+pub use collapse::{collapse_sources, collapse_subset, CollapseMethod, CollapsedSources};
 pub use collate::SourceMixing;
 pub use cp::ConditionalProbability;
 pub use error::{Axis, Error, Result};
 pub use estimate::{CooTally, GibbsEstimator, SinkEstimate, SinkModel, SinkVec};
 pub use eval::{
-    RecoveryScore, SimConfig, Simulation, run_two_source_recovery, simulate_two_source,
+    run_two_source_recovery, simulate_two_source, RecoveryScore, SimConfig, Simulation,
 };
 pub use loo::predict_loo;
 pub use metadata::{Role, SampleContext};
 pub use params::GibbsParams;
 pub use predict::predict_sinks;
-pub use rarefy::{Rarefied, RarefyConfig, SampleStatus, rarefy, rarefy_per_sample};
-pub use rng::{ItemRng, rng_for_item};
+pub use rarefy::{rarefy, rarefy_per_sample, Rarefied, RarefyConfig, SampleStatus};
+pub use rng::{rng_for_item, ItemRng};
 pub use table::{Count, CountTable, FeatureIdx};
 
 /// Returns the crate name. Retained as a stable anchor used by sibling crates

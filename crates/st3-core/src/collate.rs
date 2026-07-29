@@ -292,7 +292,7 @@ mod tests {
         approx(sm.mean_row(1)[1], 0.8); // (0.9 + 0.7) / 2
         approx(sm.std_row(0)[0], 0.0); // single draw
         approx(sm.std_row(1)[0], 0.1); // sd of [0.1, 0.3] = 0.1
-        // No tallies requested.
+                                       // No tallies requested.
         assert!(sm.contingency().is_none());
     }
 }

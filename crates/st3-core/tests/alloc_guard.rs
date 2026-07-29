@@ -31,7 +31,7 @@ use std::hint::black_box;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use st3_core::{
-    CollapseMethod, GibbsParams, SimConfig, Simulation, predict_sinks, simulate_two_source,
+    predict_sinks, simulate_two_source, CollapseMethod, GibbsParams, SimConfig, Simulation,
 };
 
 /// Count of `alloc` calls since process start.

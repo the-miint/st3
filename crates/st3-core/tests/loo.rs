@@ -14,9 +14,9 @@
 mod common;
 
 use common::{
-    Matrix, build_context, build_table, fixtures_dir, load_matrix, load_metadata, reference_params,
+    build_context, build_table, fixtures_dir, load_matrix, load_metadata, reference_params, Matrix,
 };
-use st3_core::{CollapseMethod, predict_loo};
+use st3_core::{predict_loo, CollapseMethod};
 
 /// Look up the oracle value for `source_id` × `env_label`, joining by label so
 /// the file's row/column order need not match the driver's fold order.

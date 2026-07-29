@@ -16,7 +16,7 @@
 //! the suite runs in seconds while preserving the R²-vs-JSD relationship; the
 //! `eval` module accepts the full paper parameters for out-of-CI runs.
 
-use st3_core::{CollapseMethod, GibbsParams, RecoveryScore, SimConfig, run_two_source_recovery};
+use st3_core::{run_two_source_recovery, CollapseMethod, GibbsParams, RecoveryScore, SimConfig};
 
 /// A high-separation (small concentration) scenario: spiky, mostly-disjoint
 /// sources ⇒ high JSD ⇒ the mixture should be recoverable.

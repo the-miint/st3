@@ -15,9 +15,9 @@
 //! exactly: features that subsample to zero remain in the table's `feature_ids`
 //! as structural zeros, so sources and sinks keep an identical taxon axis.
 
-use rand::Rng;
-use rand::distr::{Distribution, weighted::WeightedIndex};
+use rand::distr::{weighted::WeightedIndex, Distribution};
 use rand::seq::IteratorRandom;
+use rand::Rng;
 
 use crate::error::{Error, Result};
 use crate::metadata::SampleContext;

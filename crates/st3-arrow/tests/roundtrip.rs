@@ -15,7 +15,7 @@ mod common;
 
 use common::{arrow_inputs, core_direct, fixtures_dir, load_matrix, load_metadata};
 use st3_arrow::{import, means_batch, stds_batch};
-use st3_core::{CollapseMethod, GibbsParams, predict_sinks};
+use st3_core::{predict_sinks, CollapseMethod, GibbsParams};
 
 /// Light, deterministic params — the round-trip checks equality of two runs of
 /// the same deterministic pipeline, so heavy sampling would only slow the gate.

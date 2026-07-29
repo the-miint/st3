@@ -11,7 +11,7 @@
 mod common;
 
 use common::{build_context, build_table, fixtures_dir, load_matrix, load_metadata};
-use st3_core::{CollapseMethod, CollapsedSources, collapse_sources};
+use st3_core::{collapse_sources, CollapseMethod, CollapsedSources};
 
 /// Densify one collapsed environment column to length `n_features`.
 fn dense(cs: &CollapsedSources, env: usize, n_features: usize) -> Vec<u64> {

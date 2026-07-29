@@ -30,7 +30,7 @@ mod import;
 mod normalize;
 
 pub use error::{Error, Result};
-pub use export::{ContingencyReader, contingency_reader, means_batch, stds_batch};
+pub use export::{contingency_reader, means_batch, stds_batch, ContingencyReader};
 pub use import::import;
 
 /// Identifies this crate and the core it is built against. Stable anchor proving
