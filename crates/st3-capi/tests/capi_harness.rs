@@ -44,7 +44,9 @@ fn c_harness_runs_end_to_end() {
     let lib = profile_dir.join("libst3.so");
     assert!(
         lib.exists(),
-        "libst3.so not found at {}; is st3-capi built as a cdylib?",
+        "libst3.so not found at {}. `cargo test` builds only the rlib, never the \
+         cdylib, so this test needs an explicit `cargo build --workspace \
+         --all-features` first (which is what `make test` does).",
         lib.display()
     );
 

@@ -1,9 +1,17 @@
 .PHONY: test fmt clippy doc bench-check bench perf-guard build header
 
 # Full green gate — the single command every milestone must leave passing.
+#
+# `cargo build` runs before `cargo test` on purpose. The two C tests
+# (`c_example`, `capi_harness`) compile their .c against
+# target/<profile>/libst3.so, and `cargo test` builds only the rlib its harness
+# links — it never emits the cdylib. Without an explicit build the C tests pass
+# only where an earlier `cargo build` happened to leave an .so behind, so the
+# gate was green on developer machines and red on a clean checkout.
 test:
 	cargo fmt --all --check
 	cargo clippy --workspace --all-targets --all-features -- -D warnings
+	cargo build --workspace --all-features
 	cargo test --workspace --all-features
 	RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --all-features
 	cargo bench --workspace --no-run
