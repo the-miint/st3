@@ -1069,7 +1069,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "st3-arrow"
-version = "0.0.0"
+version = "1.0.0"
 dependencies = [
  "arrow",
  "criterion",
@@ -1078,7 +1078,7 @@ dependencies = [
 
 [[package]]
 name = "st3-capi"
-version = "0.0.0"
+version = "1.0.0"
 dependencies = [
  "arrow",
  "cbindgen",
@@ -1088,7 +1088,7 @@ dependencies = [
 
 [[package]]
 name = "st3-core"
-version = "0.0.0"
+version = "1.0.0"
 dependencies = [
  "criterion",
  "rand",

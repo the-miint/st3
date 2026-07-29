@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
+repository.workspace = true
 description = "SourceTracker3 C ABI (cdylib + staticlib) over the Arrow C Data Interface."
 
 [lib]

@@ -81,4 +81,4 @@ The workspace is three crates with a one-way dependency direction
   future release; the estimator seam and an evaluation module exist to support
   them.
 
-[1.0.0]: https://semver.org/
+[1.0.0]: https://github.com/the-miint/st3/releases/tag/v1.0.0
