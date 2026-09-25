@@ -81,8 +81,9 @@ use crate::table::CountTable;
 ///
 /// # Errors
 /// [`Error::EmptySink`] if a sink column has no sequences (the lowest-index empty
-/// sink, independent of `jobs`); propagates [`collapse_sources`],
-/// [`GibbsEstimator::prepare`] (parameter validation), and [`Error::ThreadPool`].
+/// sink, checked before any other work and so independent of `jobs`); propagates
+/// [`collapse_sources`], [`GibbsEstimator::prepare`] (parameter validation), and
+/// [`Error::ThreadPool`].
 pub fn predict_sinks(
     table: &CountTable,
     ctx: &SampleContext,
@@ -163,6 +164,19 @@ pub fn predict_sinks_rarefied(
     seed: u64,
     jobs: usize,
 ) -> Result<SourceMixing> {
+    // Cheap preconditions first, so a run that cannot succeed fails before
+    // collapse, subsampling, model precompute, or the worker pool spend anything
+    // on it. The lowest-index empty sink is reported, as the serial loop would.
+    if let Some(&s) = ctx
+        .sink_indices()
+        .iter()
+        .find(|&&s| table.column_sum(s as usize) == 0)
+    {
+        return Err(Error::EmptySink {
+            sample_index: s as usize,
+        });
+    }
+
     // Reference order: collapse, refuse a collapsed environment below the depth,
     // then subsample the collapsed environments.
     let sources = collapse_sources(table, ctx, params.collapse)?;
@@ -214,7 +228,8 @@ pub fn predict_sinks_rarefied(
 }
 
 /// Estimate every sink of `table` against already-collapsed (and possibly
-/// rarefied) `sources`: the shared body of the two sink drivers.
+/// rarefied) `sources`: the shared body of the two sink drivers. Every sink
+/// column must be non-empty (the caller has checked).
 fn estimate_sinks(
     sources: &CollapsedSources,
     table: &CountTable,
@@ -234,9 +249,6 @@ fn estimate_sinks(
     // is deterministic across thread counts (see `crate::parallel`).
     let pairs = map_items(jobs, sink_cols.len(), |item_index| {
         let s = sink_cols[item_index] as usize;
-        if table.column_sum(s) == 0 {
-            return Err(Error::EmptySink { sample_index: s });
-        }
         let (rows, counts) = table.column(s);
         let sink = SinkVec::new(rows, counts);
         let mut rng = rng_for_item(seed, item_index as u64);
@@ -577,5 +589,24 @@ mod tests {
                 shallowest: 4,
             }
         );
+    }
+
+    // Cheap input preconditions run before any expensive work. An empty sink is
+    // reported before the source model is prepared (where the sampler
+    // parameters are validated), and therefore before collapse, subsampling,
+    // or the worker pool spend anything on a run that cannot succeed. With
+    // `jobs > 1` the alternative is other sinks running full chains first.
+    #[test]
+    fn empty_sink_is_reported_before_the_model_is_prepared() {
+        let (table, ctx) = build(&[
+            ("a", Role::Source, Some("envA"), &[10, 0]),
+            ("b", Role::Source, Some("envB"), &[0, 10]),
+            ("s0", Role::Sink, None, &[5, 5]),
+            ("empty", Role::Sink, None, &[0, 0]),
+        ]);
+        let mut p = params(CollapseMethod::Sum, false);
+        p.restarts = 0; // invalid; rejected when the model is prepared
+        let err = predict_sinks(&table, &ctx, &p, 1, 1).unwrap_err();
+        assert_eq!(err, Error::EmptySink { sample_index: 3 });
     }
 }

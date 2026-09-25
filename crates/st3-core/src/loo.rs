@@ -119,9 +119,10 @@ struct FoldRow {
 /// ```
 ///
 /// # Errors
-/// [`Error::EmptySink`] if a held-out source column has no sequences; propagates
-/// [`collapse_subset`] ([`Error::NoSources`] when only a single source sample
-/// exists in total, so nothing remains after holding it out),
+/// [`Error::EmptySink`] if a source column has no sequences (the lowest-index
+/// empty source, checked before any fold runs and so independent of `jobs`);
+/// propagates [`collapse_subset`] ([`Error::NoSources`] when only a single
+/// source sample exists in total, so nothing remains after holding it out),
 /// [`GibbsEstimator::prepare`] (parameter validation), and [`Error::ThreadPool`].
 /// The lowest-index fold's error is returned, independent of `jobs`.
 pub fn predict_loo(
@@ -133,6 +134,18 @@ pub fn predict_loo(
 ) -> Result<SourceMixing> {
     let source_indices = ctx.source_indices();
     let source_envs = ctx.source_envs();
+
+    // Cheap precondition first, so a run that cannot succeed fails before any
+    // fold collapses, prepares a model, or the worker pool starts. The
+    // lowest-index empty source is reported, as the serial loop would.
+    if let Some(&s) = source_indices
+        .iter()
+        .find(|&&s| table.column_sum(s as usize) == 0)
+    {
+        return Err(Error::EmptySink {
+            sample_index: s as usize,
+        });
+    }
 
     // Fixed full frame: sorted-unique SOURCE environments (a `BTreeSet` sorts in
     // the same byte order as collapse's `BTreeMap`), then `Unknown` last. Scoping
@@ -167,11 +180,9 @@ pub fn predict_loo(
             .unzip();
         let reduced_sources = collapse_subset(table, &reduced_idx, &reduced_env, params.collapse)?;
 
-        // The held-out sample becomes the sink for this fold.
+        // The held-out sample becomes the sink for this fold (non-empty: checked
+        // above).
         let hs = source_indices[k] as usize;
-        if table.column_sum(hs) == 0 {
-            return Err(Error::EmptySink { sample_index: hs });
-        }
         let (rows, counts) = table.column(hs);
         let sink = SinkVec::new(rows, counts);
 
@@ -622,5 +633,22 @@ mod tests {
         };
         let got = predict_loo_rarefied(&table, &ctx, &p, &cfg, 3, 1).unwrap();
         assert_eq!(got, predict_loo(&table, &ctx, &p, 3, 1).unwrap());
+    }
+
+    // Cheap input preconditions run before any fold does work. An empty
+    // held-out source is reported before fold 0 collapses its reduced sources
+    // and prepares its model (where the sampler parameters are validated), and
+    // therefore before the worker pool starts.
+    #[test]
+    fn empty_held_out_source_is_reported_before_any_fold_runs() {
+        let (table, ctx) = build(&[
+            ("a", Role::Source, Some("envA"), &[10, 0]),
+            ("z", Role::Source, Some("envB"), &[0, 0]),
+            ("c", Role::Source, Some("envA"), &[5, 5]),
+        ]);
+        let mut p = params(CollapseMethod::Sum);
+        p.restarts = 0; // invalid; rejected when a fold prepares its model
+        let err = predict_loo(&table, &ctx, &p, 1, 1).unwrap_err();
+        assert_eq!(err, Error::EmptySink { sample_index: 1 });
     }
 }

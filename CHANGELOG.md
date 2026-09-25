@@ -36,6 +36,11 @@ breaking ABI change.
   success. The `rarefy` / `rarefy_per_sample` primitives keep their
   flag-and-pass-through behaviour for callers composing their own pipeline
   (#2).
+- Empty sinks (sink mode) and empty held-out sources (leave-one-out) are now
+  rejected before collapse, subsampling, model precompute, or the worker pool
+  start, rather than inside the per-item work, where with `jobs > 1` other
+  items could run their full Gibbs chains before the error surfaced. The
+  reported error is unchanged: the lowest-index empty column (#5).
 
 ## [1.0.0] — 2026-07-06
 
