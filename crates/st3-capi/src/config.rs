@@ -121,9 +121,13 @@ pub struct St3Config {
     pub seed: u64,
     /// Worker count: `0` uses all logical cores, `1` runs serially, `n` uses `n`.
     pub jobs: i32,
-    /// Target depth for source samples; `0` disables source rarefaction.
+    /// Target depth for the source side; `0` disables source rarefaction. In
+    /// sink mode it applies to each *collapsed* environment (sources are
+    /// collapsed first, then subsampled, as SourceTracker2 does); in
+    /// leave-one-out mode to each source sample.
     pub source_rarefaction_depth: i32,
-    /// Target depth for sink samples; `0` disables sink rarefaction.
+    /// Target depth for each sink sample; `0` disables sink rarefaction.
+    /// Ignored in leave-one-out mode, where sinks play no part.
     pub sink_rarefaction_depth: i32,
     /// Rarefy with replacement (multinomial) rather than without (reservoir).
     /// `0` = false, nonzero = true.
@@ -167,13 +171,6 @@ pub(crate) struct RunPlan {
     pub jobs: usize,
     /// Whether to run leave-one-out instead of sink prediction.
     pub loo: bool,
-}
-
-impl RunPlan {
-    /// Whether any rarefaction was requested (either role has a positive depth).
-    pub(crate) fn rarefaction_requested(&self) -> bool {
-        self.rarefy.source_depth.is_some() || self.rarefy.sink_depth.is_some()
-    }
 }
 
 impl St3Config {
@@ -357,7 +354,7 @@ mod tests {
         assert_eq!(plan.seed, 42);
         assert_eq!(plan.jobs, 1);
         assert!(!plan.loo);
-        assert!(!plan.rarefaction_requested());
+        assert_eq!(plan.rarefy, RarefyConfig::default());
         assert_eq!(plan.params.collapse, CollapseMethod::Sum);
         assert_eq!(plan.params.alpha1, 0.001);
         assert_eq!(plan.params.beta, 10.0);
@@ -379,7 +376,6 @@ mod tests {
         let plan = cfg.to_core().expect("valid config");
         assert_eq!(plan.params.collapse, CollapseMethod::Mean);
         assert!(plan.loo);
-        assert!(plan.rarefaction_requested());
         assert_eq!(plan.rarefy.source_depth, Some(1000));
         assert_eq!(plan.rarefy.sink_depth, Some(500));
         assert!(plan.rarefy.with_replacement);

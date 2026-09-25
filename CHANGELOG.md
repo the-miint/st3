@@ -13,6 +13,19 @@ breaking ABI change.
   it and the test gate fails if it drifts from the generated one. The header
   now states up front that the Arrow C Data Interface structs must be declared
   before including it (#1).
+- Sink-mode rarefaction now follows SourceTracker2's order: the sources are
+  collapsed first and each *collapsed environment* is then subsampled to the
+  source depth, so every environment enters the sampler with exactly that many
+  sequences. Previously each source *sample* was subsampled before collapse,
+  which lowered the sampling variance of the pooled profile and, under mean
+  collapse, left the environment below the depth. Leave-one-out was already in
+  the reference order (per source sample, then per-fold collapse) and is
+  unchanged; its sink depth is now ignored, as in the reference. New
+  `predict_sinks_rarefied` and `predict_loo_rarefied` drivers in `st3-core`
+  take a `RarefyConfig` and implement this order, `CollapsedSources::rarefy`
+  subsamples a collapsed table, and `st3_run` lowers onto the new drivers. The
+  sink-subsampling, source-subsampling, and sampler stages now draw from
+  distinct seed-derived streams (#3).
 
 ## [1.0.0] — 2026-07-06
 

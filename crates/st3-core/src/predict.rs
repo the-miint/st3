@@ -11,19 +11,21 @@
 //! never on iteration order (the serial loop here becomes a parallel one later
 //! without changing output).
 //!
-//! Rarefaction is intentionally *not* performed here: callers rarefy the table
-//! up front with [`crate::rarefy()`] if desired (matching the reference, which
-//! treats rarefaction as a separate preprocessing step). Leave-one-out is a
-//! separate driver (a later milestone).
+//! Rarefaction, when requested, follows SourceTracker2's sink-mode order in
+//! [`predict_sinks_rarefied`]: sources are collapsed *first* and each collapsed
+//! environment is then subsampled to the source depth, while sinks are
+//! subsampled per sample. [`predict_sinks`] is the same driver with rarefaction
+//! off. Leave-one-out is a separate driver ([`crate::predict_loo`]).
 
-use crate::collapse::collapse_sources;
+use crate::collapse::{collapse_sources, CollapsedSources};
 use crate::collate::{collate, SourceMixing};
 use crate::error::{Error, Result};
 use crate::estimate::{GibbsEstimator, SinkModel, SinkVec};
 use crate::metadata::SampleContext;
 use crate::parallel::map_items;
 use crate::params::GibbsParams;
-use crate::rng::rng_for_item;
+use crate::rarefy::{active_depth, rarefy_per_sample, Rarefied, RarefyConfig};
+use crate::rng::{rng_for_item, stage_seed, STAGE_RAREFY_SINKS, STAGE_RAREFY_SOURCES};
 use crate::table::CountTable;
 
 /// Estimate the source composition of every sink in `ctx`.
@@ -37,7 +39,8 @@ use crate::table::CountTable;
 /// `jobs` sizes a per-call scoped worker pool: `0` uses all logical cores, `1`
 /// runs serially, and `n` uses `n` threads. Because each sink is seeded from
 /// `(seed, position)` alone and results are collated in sink order, the output is
-/// byte-identical regardless of `jobs`.
+/// byte-identical regardless of `jobs`. Equivalent to [`predict_sinks_rarefied`]
+/// with rarefaction disabled.
 ///
 /// # Examples
 /// ```
@@ -87,8 +90,123 @@ pub fn predict_sinks(
     seed: u64,
     jobs: usize,
 ) -> Result<SourceMixing> {
+    predict_sinks_rarefied(table, ctx, params, &RarefyConfig::default(), seed, jobs)
+}
+
+/// Estimate the source composition of every sink in `ctx`, rarefying first as
+/// `rarefy` directs.
+///
+/// The order follows SourceTracker2's sink mode. Sources are collapsed by
+/// `params.collapse` and then, when `rarefy.source_depth` is set, each
+/// *collapsed environment* is subsampled to that depth — so every environment
+/// enters the sampler with exactly `source_depth` sequences however many samples
+/// it pools. Sinks are subsampled per sample to `rarefy.sink_depth`. A depth of
+/// `None` (or `0`) leaves that side untouched; with both unset this is exactly
+/// [`predict_sinks`]. An environment or sink shallower than its depth passes
+/// through unchanged, as [`crate::rarefy()`] does.
+///
+/// Each stochastic stage — sink subsampling, source subsampling, and the
+/// sampler — draws from its own stream derived from `seed`, so the sampler's
+/// randomness for a given seed is the same with or without rarefaction, and the
+/// output depends on the seed alone, never on `jobs`.
+///
+/// # Examples
+/// ```
+/// use st3_core::{
+///     CollapseMethod, CountTable, GibbsParams, RarefyConfig, Role, SampleContext,
+///     predict_sinks_rarefied,
+/// };
+///
+/// // envA pools two samples and envB has one; every column holds 100 sequences.
+/// let table = CountTable::from_coo(
+///     vec!["f0".into(), "f1".into()],
+///     vec!["a1".into(), "a2".into(), "b".into(), "sink".into()],
+///     &[0, 1, 0, 1, 1, 0, 1],
+///     &[0, 0, 1, 1, 2, 3, 3],
+///     &[90.0, 10.0, 80.0, 20.0, 100.0, 70.0, 30.0],
+/// )?;
+/// let ctx = SampleContext::new(
+///     vec![Role::Source, Role::Source, Role::Source, Role::Sink],
+///     vec![Some("envA".into()), Some("envA".into()), Some("envB".into()), None],
+/// )?;
+/// let params = GibbsParams {
+///     restarts: 4,
+///     draws_per_restart: 2,
+///     burnin: 5,
+///     collapse: CollapseMethod::Sum,
+///     ..GibbsParams::default()
+/// };
+/// // Subsample each collapsed environment to 50 sequences and the sink to 40.
+/// let rarefy = RarefyConfig {
+///     source_depth: Some(50),
+///     sink_depth: Some(40),
+///     with_replacement: false,
+/// };
+/// let mixing = predict_sinks_rarefied(&table, &ctx, &params, &rarefy, 42, 1)?;
+///
+/// assert_eq!(mixing.env_names(), &["envA", "envB", "Unknown"]);
+/// let row = mixing.mean_row(0);
+/// assert!((row.iter().sum::<f64>() - 1.0).abs() < 1e-9);
+/// assert!(row[0] > row[1]); // the sink is mostly f0, like envA
+/// # Ok::<(), st3_core::Error>(())
+/// ```
+///
+/// # Errors
+/// Those of [`predict_sinks`], plus [`crate::rarefy()`]'s.
+pub fn predict_sinks_rarefied(
+    table: &CountTable,
+    ctx: &SampleContext,
+    params: &GibbsParams,
+    rarefy: &RarefyConfig,
+    seed: u64,
+    jobs: usize,
+) -> Result<SourceMixing> {
+    // Reference order: collapse, then subsample the collapsed environments.
     let sources = collapse_sources(table, ctx, params.collapse)?;
-    let prep = GibbsEstimator::prepare(&sources, params)?;
+    let sources = match active_depth(rarefy.source_depth) {
+        Some(depth) => sources.rarefy(
+            Some(depth),
+            rarefy.with_replacement,
+            stage_seed(seed, STAGE_RAREFY_SOURCES),
+        )?,
+        None => sources,
+    };
+
+    // Sinks are subsampled per sample; the source columns of `table` are left
+    // alone (their depth is `None` here) because the collapsed copy above is what
+    // the sampler sees.
+    let sinks: Option<Rarefied> = match active_depth(rarefy.sink_depth) {
+        Some(_) => {
+            let depths = RarefyConfig {
+                source_depth: None,
+                ..*rarefy
+            }
+            .depths_for(ctx);
+            Some(rarefy_per_sample(
+                table,
+                &depths,
+                rarefy.with_replacement,
+                stage_seed(seed, STAGE_RAREFY_SINKS),
+            )?)
+        }
+        None => None,
+    };
+    let sink_table = sinks.as_ref().map_or(table, Rarefied::table);
+
+    estimate_sinks(&sources, sink_table, ctx, params, seed, jobs)
+}
+
+/// Estimate every sink of `table` against already-collapsed (and possibly
+/// rarefied) `sources`: the shared body of the two sink drivers.
+fn estimate_sinks(
+    sources: &CollapsedSources,
+    table: &CountTable,
+    ctx: &SampleContext,
+    params: &GibbsParams,
+    seed: u64,
+    jobs: usize,
+) -> Result<SourceMixing> {
+    let prep = GibbsEstimator::prepare(sources, params)?;
 
     // Column labels: collapsed source envs (sorted) then Unknown (last).
     let mut env_names: Vec<String> = sources.env_names().to_vec();
@@ -261,5 +379,129 @@ mod tests {
         // Grand total of the tally equals the sink depth (8 + 2 = 10).
         let mass: f64 = tallies[0].triples().map(|(_, _, m)| m).sum();
         assert!((mass - 10.0).abs() < 1e-9, "tally mass = {mass}");
+    }
+
+    fn rarefy_cfg(source_depth: Option<u32>, sink_depth: Option<u32>) -> RarefyConfig {
+        RarefyConfig {
+            source_depth,
+            sink_depth,
+            with_replacement: false,
+        }
+    }
+
+    /// Densify environment `env` of `sources` to a length-`tau` count vector.
+    fn dense_env(sources: &CollapsedSources, env: usize, tau: usize) -> Vec<u32> {
+        let (rows, counts) = sources.column(env);
+        let mut d = vec![0u32; tau];
+        for (&r, &c) in rows.iter().zip(counts.iter()) {
+            d[r as usize] = c;
+        }
+        d
+    }
+
+    // With no depth set the rarefied driver *is* `predict_sinks`, so a caller
+    // can route every run through it without changing unrarefied results.
+    #[test]
+    fn rarefied_with_no_depths_equals_predict_sinks() {
+        let (table, ctx) = build(&[
+            ("a", Role::Source, Some("envA"), &[10, 0]),
+            ("b", Role::Source, Some("envB"), &[0, 10]),
+            ("s0", Role::Sink, None, &[8, 2]),
+        ]);
+        let p = params(CollapseMethod::Sum, true);
+        let plain = predict_sinks(&table, &ctx, &p, 3, 1).unwrap();
+        let rarefied =
+            predict_sinks_rarefied(&table, &ctx, &p, &RarefyConfig::default(), 3, 1).unwrap();
+        assert_eq!(rarefied, plain);
+    }
+
+    // Sinks are subsampled per sample before estimation. The contingency
+    // tally's mass equals the sink's sequence count that the sampler saw, so a
+    // 10-sequence sink rarefied to 6 must tally exactly 6.
+    #[test]
+    fn sink_depth_subsamples_each_sink_before_estimation() {
+        let (table, ctx) = build(&[
+            ("a", Role::Source, Some("envA"), &[10, 0]),
+            ("b", Role::Source, Some("envB"), &[0, 10]),
+            ("s0", Role::Sink, None, &[8, 2]),
+            ("s1", Role::Sink, None, &[3, 7]),
+        ]);
+        let p = params(CollapseMethod::Sum, true);
+        let sm =
+            predict_sinks_rarefied(&table, &ctx, &p, &rarefy_cfg(None, Some(6)), 1, 1).unwrap();
+        for (i, tally) in sm.contingency().unwrap().iter().enumerate() {
+            let mass: f64 = tally.triples().map(|(_, _, m)| m).sum();
+            assert!((mass - 6.0).abs() < 1e-9, "sink {i} tally mass = {mass}");
+        }
+    }
+
+    // The ST2 sink-mode order: collapse first, then subsample each *collapsed
+    // environment* to the source depth. Here envA pools two 6-sequence samples
+    // (12 under Sum) and the depth is 10: every member is shallower than the
+    // depth but the environment is not. Per-sample-first rarefaction would
+    // leave both members untouched and hand the sampler a 12-count environment;
+    // the reference order hands it exactly 10. Proved by equivalence with
+    // `predict_sinks` on a table whose source columns *are* the collapsed-then-
+    // rarefied environments (a single member collapses to itself under Sum).
+    #[test]
+    fn source_depth_applies_to_the_collapsed_environment_not_its_members() {
+        let sink: &[u32] = &[5, 3, 2];
+        let (table, ctx) = build(&[
+            ("a1", Role::Source, Some("envA"), &[4, 2, 0]),
+            ("a2", Role::Source, Some("envA"), &[2, 4, 0]),
+            ("b", Role::Source, Some("envB"), &[0, 0, 10]),
+            ("s0", Role::Sink, None, sink),
+        ]);
+        let p = params(CollapseMethod::Sum, false);
+        let seed = 11;
+        let got =
+            predict_sinks_rarefied(&table, &ctx, &p, &rarefy_cfg(Some(10), None), seed, 1).unwrap();
+
+        // The sampler's input under the reference order.
+        let sources = collapse_sources(&table, &ctx, CollapseMethod::Sum)
+            .unwrap()
+            .rarefy(Some(10), false, stage_seed(seed, STAGE_RAREFY_SOURCES))
+            .unwrap();
+        assert_eq!(
+            sources.counts().column_sum(0),
+            10,
+            "envA rarefied to the depth"
+        );
+        assert_eq!(
+            sources.counts().column_sum(1),
+            10,
+            "envB rarefied to the depth"
+        );
+        let env_a = dense_env(&sources, 0, 3);
+        let env_b = dense_env(&sources, 1, 3);
+        let (table2, ctx2) = build(&[
+            ("envA", Role::Source, Some("envA"), &env_a),
+            ("envB", Role::Source, Some("envB"), &env_b),
+            ("s0", Role::Sink, None, sink),
+        ]);
+        let expected = predict_sinks(&table2, &ctx2, &p, seed, 1).unwrap();
+        assert_eq!(got, expected);
+    }
+
+    // Determinism guard extends to the rarefied path: both subsampling stages
+    // and the sampler are seeded per item, so `jobs` cannot change the output.
+    #[test]
+    fn rarefied_output_is_identical_across_job_counts() {
+        let (table, ctx) = build(&[
+            ("a1", Role::Source, Some("envA"), &[10, 0, 1]),
+            ("a2", Role::Source, Some("envA"), &[8, 2, 1]),
+            ("b", Role::Source, Some("envB"), &[0, 10, 1]),
+            ("c", Role::Source, Some("envC"), &[1, 1, 10]),
+            ("s0", Role::Sink, None, &[8, 2, 1]),
+            ("s1", Role::Sink, None, &[3, 7, 2]),
+            ("s2", Role::Sink, None, &[1, 1, 9]),
+        ]);
+        let p = params(CollapseMethod::Mean, true);
+        let cfg = rarefy_cfg(Some(8), Some(8));
+        let serial = predict_sinks_rarefied(&table, &ctx, &p, &cfg, 2024, 1).unwrap();
+        for jobs in [0usize, 2, 8] {
+            let parallel = predict_sinks_rarefied(&table, &ctx, &p, &cfg, 2024, jobs).unwrap();
+            assert_eq!(parallel, serial, "jobs={jobs} diverged from serial");
+        }
     }
 }

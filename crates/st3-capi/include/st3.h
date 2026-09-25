@@ -96,9 +96,13 @@ typedef struct St3Config {
   uint64_t seed;
   // Worker count: `0` uses all logical cores, `1` runs serially, `n` uses `n`.
   int32_t jobs;
-  // Target depth for source samples; `0` disables source rarefaction.
+  // Target depth for the source side; `0` disables source rarefaction. In
+  // sink mode it applies to each *collapsed* environment (sources are
+  // collapsed first, then subsampled, as SourceTracker2 does); in
+  // leave-one-out mode to each source sample.
   int32_t source_rarefaction_depth;
-  // Target depth for sink samples; `0` disables sink rarefaction.
+  // Target depth for each sink sample; `0` disables sink rarefaction.
+  // Ignored in leave-one-out mode, where sinks play no part.
   int32_t sink_rarefaction_depth;
   // Rarefy with replacement (multinomial) rather than without (reservoir).
   // `0` = false, nonzero = true.
@@ -169,10 +173,14 @@ enum St3Status st3_table_from_arrow(const ArrowArray *coo,
 //
 // `table` is a handle from `st3_table_from_arrow`; `config` is a versioned
 // `St3Config`. With `config.loo` set the run performs leave-one-out source
-// prediction, otherwise sink prediction; rarefaction is applied first when a
-// depth is configured. On success a new result handle is written to `*out` and
-// must later be freed with `st3_result_free`. On failure `*out` is set to null
-// and the reason is available from `st3_last_error`.
+// prediction, otherwise sink prediction. Rarefaction follows SourceTracker2:
+// in sink mode the sources are collapsed and each collapsed environment is then
+// subsampled to `source_rarefaction_depth`, while each sink is subsampled to
+// `sink_rarefaction_depth`; in leave-one-out mode each source sample is
+// subsampled to `source_rarefaction_depth` and the sink depth is ignored. A
+// depth of `0` disables that side. On success a new result handle is written to
+// `*out` and must later be freed with `st3_result_free`. On failure `*out` is
+// set to null and the reason is available from `st3_last_error`.
 //
 // # Safety
 // `table` must be a live handle from `st3_table_from_arrow`, `config` a valid

@@ -55,6 +55,11 @@ impl Rarefied {
         &self.status
     }
 
+    /// Consume the outcome, keeping only the rarefied table.
+    pub fn into_table(self) -> CountTable {
+        self.table
+    }
+
     /// Whether sampling was with replacement.
     pub fn with_replacement(&self) -> bool {
         self.with_replacement
@@ -105,6 +110,11 @@ impl RarefyConfig {
         }
         depths
     }
+}
+
+/// The depth a request enables: `None` and `Some(0)` both disable rarefaction.
+pub(crate) fn active_depth(depth: Option<u32>) -> Option<u32> {
+    depth.filter(|&d| d > 0)
 }
 
 /// Rarefy every column of `table` to the same `depth`.

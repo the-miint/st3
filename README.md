@@ -64,8 +64,9 @@ deviations, and drain the per-sink assignment stream — is in
 ## Using from Rust
 
 Rust consumers depend on `st3-core` directly; the flagship entry points
-(`predict_sinks`, `predict_loo`, `rarefy_per_sample`, `CountTable::from_coo`,
-`simulate_two_source`) carry runnable examples in their rustdoc
+(`predict_sinks`, `predict_sinks_rarefied`, `predict_loo`, `rarefy_per_sample`,
+`CountTable::from_coo`, `simulate_two_source`) carry runnable examples in their
+rustdoc
 (`cargo doc --open`).
 
 ## Development
