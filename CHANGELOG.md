@@ -42,6 +42,11 @@ breaking ABI change.
   items could run their full Gibbs chains before the error surfaced. The
   reported error is unchanged: the lowest-index empty column (#5).
 
+### Added
+- A CI job that type-checks `st3-capi` for `wasm32-unknown-emscripten`, the
+  target of duckdb-miint's DuckDB-Wasm build, so the crate stays buildable
+  there (#6).
+
 ## [1.0.0] — 2026-07-06
 
 First release. SourceTracker3 is a library-only, C/C++-facing reimplementation
