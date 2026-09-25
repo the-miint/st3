@@ -49,13 +49,15 @@ build:
 # `committed_header_is_current` test in `make test` fails whenever the committed
 # copy drifts from the generated one, so run this after any change to the C ABI
 # surface and commit the result. Builds the C ABI crate, locates the freshest
-# generated copy under target/debug, and copies it into place.
+# generated copy under the debug profile of the cargo target directory
+# (CARGO_TARGET_DIR, default ./target), and copies it into place.
 header:
 	cargo build -p st3-capi
-	@hdr=$$(find target/debug -path '*st3-capi*/out/st3.h' -printf '%T@ %p\n' \
+	@tdir="$${CARGO_TARGET_DIR:-target}/debug"; \
+	hdr=$$(find "$$tdir" -path '*st3-capi*/out/st3.h' -printf '%T@ %p\n' \
 		| sort -rn | head -1 | cut -d' ' -f2-); \
 	if [ -z "$$hdr" ]; then \
-		echo "st3.h not found under target/debug; did the build run?" >&2; exit 1; \
+		echo "st3.h not found under $$tdir; did the build run?" >&2; exit 1; \
 	fi; \
 	mkdir -p crates/st3-capi/include && cp "$$hdr" crates/st3-capi/include/st3.h && \
 	echo "st3.h -> crates/st3-capi/include/st3.h"
