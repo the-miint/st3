@@ -125,6 +125,20 @@ pub enum Error {
         /// The underlying builder error, rendered for display.
         reason: String,
     },
+    /// Rarefaction was requested at a depth that some samples of a role cannot
+    /// reach. The reference refuses such a run rather than analysing
+    /// under-depth samples; the fields carry its report.
+    ShallowSamples {
+        /// What was checked, as it reads in the message: `"source"` (per
+        /// sample, leave-one-out), `"collapsed source"` (sink mode), or `"sink"`.
+        what: &'static str,
+        /// The requested depth.
+        depth: u32,
+        /// How many of the checked samples fall short of `depth`.
+        count: usize,
+        /// The smallest total among the checked samples.
+        shallowest: u64,
+    },
 }
 
 impl fmt::Display for Error {
@@ -177,6 +191,16 @@ impl fmt::Display for Error {
             Error::ThreadPool { reason } => {
                 write!(f, "could not build the worker thread pool: {reason}.")
             }
+            Error::ShallowSamples {
+                what,
+                depth,
+                count,
+                shallowest,
+            } => write!(
+                f,
+                "rarefaction of {what} samples at depth {depth} was requested, but {count} of \
+                 them fall short; the shallowest has {shallowest} sequences."
+            ),
         }
     }
 }
@@ -227,6 +251,12 @@ mod tests {
             Error::EmptySink { sample_index: 3 },
             Error::ThreadPool {
                 reason: "no threads".into(),
+            },
+            Error::ShallowSamples {
+                what: "sink",
+                depth: 1000,
+                count: 2,
+                shallowest: 812,
             },
         ];
         for e in &variants {

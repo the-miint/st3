@@ -143,9 +143,11 @@ fn run_inner(handle: &St3Table, config: &St3Config) -> Result<SourceMixing, St3S
 /// subsampled to `source_rarefaction_depth`, while each sink is subsampled to
 /// `sink_rarefaction_depth`; in leave-one-out mode each source sample is
 /// subsampled to `source_rarefaction_depth` and the sink depth is ignored. A
-/// depth of `0` disables that side. On success a new result handle is written to
-/// `*out` and must later be freed with `st3_result_free`. On failure `*out` is
-/// set to null and the reason is available from `st3_last_error`.
+/// depth of `0` disables that side; a sample (or collapsed environment) that
+/// cannot reach its depth fails the run with `ST3_STATUS_ERR_SHALLOW_SAMPLE`
+/// before any sampling. On success a new result handle is written to `*out` and
+/// must later be freed with `st3_result_free`. On failure `*out` is set to null
+/// and the reason is available from `st3_last_error`.
 ///
 /// # Safety
 /// `table` must be a live handle from `st3_table_from_arrow`, `config` a valid
@@ -504,6 +506,40 @@ mod tests {
         let config = config_from_params(&params, SEED, 1, true, 60, 50, true);
         let got = run_via_ffi(&table, &ctx, &config);
         assert_eq!(got, expected);
+    }
+
+    // A sink shallower than the sink depth fails the run before any sampling
+    // with the reserved shallow-sample status, and the last-error carries the
+    // reference's facts (which role, how many, the shallowest). SourceTracker2
+    // refuses such a run rather than silently analysing under-depth samples.
+    #[test]
+    fn run_shallow_sink_returns_err_shallow_sample() {
+        let (table, ctx) = dataset();
+        let params = light_gibbs(CollapseMethod::Sum, false);
+        // Sinks total 100, 100, 120: a depth of 110 leaves two shallow.
+        let config = config_from_params(&params, SEED, 1, false, 0, 110, false);
+        let handle = Box::into_raw(Box::new(St3Table::new(table, ctx)));
+        let mut out: *mut St3Result = std::ptr::null_mut();
+        clear_last_error();
+        // SAFETY: `handle` is a live handle; `config`/`out` are valid pointers.
+        let status = unsafe { st3_run(handle, &config, &mut out) };
+        assert_eq!(status, St3Status::ErrShallowSample);
+        assert!(out.is_null());
+        // SAFETY: `st3_last_error` returns null or a NUL-terminated thread-local
+        // string that stays valid until the next call on this thread.
+        let msg = unsafe { std::ffi::CStr::from_ptr(st3_last_error()) }
+            .to_str()
+            .unwrap()
+            .to_owned();
+        for fact in [
+            "sink samples at depth 110",
+            "2 of them",
+            "shallowest has 100",
+        ] {
+            assert!(msg.contains(fact), "last error {msg:?} lacks {fact:?}");
+        }
+        // SAFETY: `handle` came from `Box::into_raw` above and is freed once.
+        unsafe { st3_table_free(handle) };
     }
 
     #[test]

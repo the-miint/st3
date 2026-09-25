@@ -38,9 +38,11 @@ typedef enum St3Status {
   // index, or any other core validation failure. The specifics are in the
   // last-error string.
   ST3_STATUS_ERR_INVALID_INPUT,
-  // Reserved. A sample was too shallow to analyze. The core currently keeps
-  // and flags shallow samples rather than erroring, so this is defined for
-  // ABI stability but not yet produced.
+  // A sample was too shallow for the requested rarefaction depth: in sink
+  // mode a collapsed source environment or a sink, in leave-one-out mode a
+  // source sample. The run is refused before any sampling, as SourceTracker2
+  // does; the last-error string names the role, how many samples fall
+  // short, and the shallowest total.
   ST3_STATUS_ERR_SHALLOW_SAMPLE,
   // No sample was labeled as a source.
   ST3_STATUS_ERR_NO_SOURCES,
@@ -99,10 +101,12 @@ typedef struct St3Config {
   // Target depth for the source side; `0` disables source rarefaction. In
   // sink mode it applies to each *collapsed* environment (sources are
   // collapsed first, then subsampled, as SourceTracker2 does); in
-  // leave-one-out mode to each source sample.
+  // leave-one-out mode to each source sample. One that cannot reach the
+  // depth fails the run with `ST3_STATUS_ERR_SHALLOW_SAMPLE`.
   int32_t source_rarefaction_depth;
   // Target depth for each sink sample; `0` disables sink rarefaction.
-  // Ignored in leave-one-out mode, where sinks play no part.
+  // Ignored in leave-one-out mode, where sinks play no part. A sink that
+  // cannot reach the depth fails the run with `ST3_STATUS_ERR_SHALLOW_SAMPLE`.
   int32_t sink_rarefaction_depth;
   // Rarefy with replacement (multinomial) rather than without (reservoir).
   // `0` = false, nonzero = true.
@@ -178,9 +182,11 @@ enum St3Status st3_table_from_arrow(const ArrowArray *coo,
 // subsampled to `source_rarefaction_depth`, while each sink is subsampled to
 // `sink_rarefaction_depth`; in leave-one-out mode each source sample is
 // subsampled to `source_rarefaction_depth` and the sink depth is ignored. A
-// depth of `0` disables that side. On success a new result handle is written to
-// `*out` and must later be freed with `st3_result_free`. On failure `*out` is
-// set to null and the reason is available from `st3_last_error`.
+// depth of `0` disables that side; a sample (or collapsed environment) that
+// cannot reach its depth fails the run with `ST3_STATUS_ERR_SHALLOW_SAMPLE`
+// before any sampling. On success a new result handle is written to `*out` and
+// must later be freed with `st3_result_free`. On failure `*out` is set to null
+// and the reason is available from `st3_last_error`.
 //
 // # Safety
 // `table` must be a live handle from `st3_table_from_arrow`, `config` a valid

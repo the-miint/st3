@@ -124,10 +124,12 @@ pub struct St3Config {
     /// Target depth for the source side; `0` disables source rarefaction. In
     /// sink mode it applies to each *collapsed* environment (sources are
     /// collapsed first, then subsampled, as SourceTracker2 does); in
-    /// leave-one-out mode to each source sample.
+    /// leave-one-out mode to each source sample. One that cannot reach the
+    /// depth fails the run with `ST3_STATUS_ERR_SHALLOW_SAMPLE`.
     pub source_rarefaction_depth: i32,
     /// Target depth for each sink sample; `0` disables sink rarefaction.
-    /// Ignored in leave-one-out mode, where sinks play no part.
+    /// Ignored in leave-one-out mode, where sinks play no part. A sink that
+    /// cannot reach the depth fails the run with `ST3_STATUS_ERR_SHALLOW_SAMPLE`.
     pub sink_rarefaction_depth: i32,
     /// Rarefy with replacement (multinomial) rather than without (reservoir).
     /// `0` = false, nonzero = true.

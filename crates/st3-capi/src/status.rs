@@ -24,9 +24,11 @@ pub enum St3Status {
     /// index, or any other core validation failure. The specifics are in the
     /// last-error string.
     ErrInvalidInput,
-    /// Reserved. A sample was too shallow to analyze. The core currently keeps
-    /// and flags shallow samples rather than erroring, so this is defined for
-    /// ABI stability but not yet produced.
+    /// A sample was too shallow for the requested rarefaction depth: in sink
+    /// mode a collapsed source environment or a sink, in leave-one-out mode a
+    /// source sample. The run is refused before any sampling, as SourceTracker2
+    /// does; the last-error string names the role, how many samples fall
+    /// short, and the shallowest total.
     ErrShallowSample,
     /// No sample was labeled as a source.
     ErrNoSources,
@@ -40,12 +42,14 @@ pub enum St3Status {
 
 /// Map a core error onto a status.
 ///
-/// [`CoreError::NoSources`] is distinguished as [`St3Status::ErrNoSources`];
-/// every other core failure is an [`St3Status::ErrInvalidInput`] whose specifics
-/// are carried in the last-error string.
+/// [`CoreError::NoSources`] is distinguished as [`St3Status::ErrNoSources`] and
+/// [`CoreError::ShallowSamples`] as [`St3Status::ErrShallowSample`]; every other
+/// core failure is an [`St3Status::ErrInvalidInput`] whose specifics are carried
+/// in the last-error string.
 pub(crate) fn status_of_core(err: &CoreError) -> St3Status {
     match err {
         CoreError::NoSources => St3Status::ErrNoSources,
+        CoreError::ShallowSamples { .. } => St3Status::ErrShallowSample,
         _ => St3Status::ErrInvalidInput,
     }
 }
@@ -71,6 +75,17 @@ mod tests {
             status_of_core(&CoreError::NoSources),
             St3Status::ErrNoSources
         );
+    }
+
+    #[test]
+    fn core_shallow_samples_maps_to_err_shallow_sample() {
+        let e = CoreError::ShallowSamples {
+            what: "sink",
+            depth: 1000,
+            count: 1,
+            shallowest: 200,
+        };
+        assert_eq!(status_of_core(&e), St3Status::ErrShallowSample);
     }
 
     #[test]

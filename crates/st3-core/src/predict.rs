@@ -24,7 +24,7 @@ use crate::estimate::{GibbsEstimator, SinkModel, SinkVec};
 use crate::metadata::SampleContext;
 use crate::parallel::map_items;
 use crate::params::GibbsParams;
-use crate::rarefy::{active_depth, rarefy_per_sample, Rarefied, RarefyConfig};
+use crate::rarefy::{active_depth, check_depth, rarefy_per_sample, Rarefied, RarefyConfig};
 use crate::rng::{rng_for_item, stage_seed, STAGE_RAREFY_SINKS, STAGE_RAREFY_SOURCES};
 use crate::table::CountTable;
 
@@ -102,8 +102,9 @@ pub fn predict_sinks(
 /// enters the sampler with exactly `source_depth` sequences however many samples
 /// it pools. Sinks are subsampled per sample to `rarefy.sink_depth`. A depth of
 /// `None` (or `0`) leaves that side untouched; with both unset this is exactly
-/// [`predict_sinks`]. An environment or sink shallower than its depth passes
-/// through unchanged, as [`crate::rarefy()`] does.
+/// [`predict_sinks`]. An environment or sink shallower than its depth refuses
+/// the run with [`Error::ShallowSamples`] before any sampling, as the reference
+/// does; the error names the role, how many fall short, and the shallowest.
 ///
 /// Each stochastic stage — sink subsampling, source subsampling, and the
 /// sampler — draws from its own stream derived from `seed`, so the sampler's
@@ -152,7 +153,8 @@ pub fn predict_sinks(
 /// ```
 ///
 /// # Errors
-/// Those of [`predict_sinks`], plus [`crate::rarefy()`]'s.
+/// Those of [`predict_sinks`], plus [`Error::ShallowSamples`] and
+/// [`crate::rarefy()`]'s.
 pub fn predict_sinks_rarefied(
     table: &CountTable,
     ctx: &SampleContext,
@@ -161,14 +163,23 @@ pub fn predict_sinks_rarefied(
     seed: u64,
     jobs: usize,
 ) -> Result<SourceMixing> {
-    // Reference order: collapse, then subsample the collapsed environments.
+    // Reference order: collapse, refuse a collapsed environment below the depth,
+    // then subsample the collapsed environments.
     let sources = collapse_sources(table, ctx, params.collapse)?;
     let sources = match active_depth(rarefy.source_depth) {
-        Some(depth) => sources.rarefy(
-            Some(depth),
-            rarefy.with_replacement,
-            stage_seed(seed, STAGE_RAREFY_SOURCES),
-        )?,
+        Some(depth) => {
+            check_depth(
+                sources.counts(),
+                0..sources.n_sources(),
+                depth,
+                "collapsed source",
+            )?;
+            sources.rarefy(
+                Some(depth),
+                rarefy.with_replacement,
+                stage_seed(seed, STAGE_RAREFY_SOURCES),
+            )?
+        }
         None => sources,
     };
 
@@ -176,7 +187,13 @@ pub fn predict_sinks_rarefied(
     // alone (their depth is `None` here) because the collapsed copy above is what
     // the sampler sees.
     let sinks: Option<Rarefied> = match active_depth(rarefy.sink_depth) {
-        Some(_) => {
+        Some(depth) => {
+            check_depth(
+                table,
+                ctx.sink_indices().iter().map(|&s| s as usize),
+                depth,
+                "sink",
+            )?;
             let depths = RarefyConfig {
                 source_depth: None,
                 ..*rarefy
@@ -503,5 +520,62 @@ mod tests {
             let parallel = predict_sinks_rarefied(&table, &ctx, &p, &cfg, 2024, jobs).unwrap();
             assert_eq!(parallel, serial, "jobs={jobs} diverged from serial");
         }
+    }
+
+    // The reference refuses to run when a *collapsed* environment cannot reach
+    // the source depth. Under mean collapse two members that each hold exactly
+    // the depth can still collapse to nothing: here each has one sequence on
+    // ten disjoint taxa, so every per-taxon mean floors to zero. Per-sample
+    // checking would have passed both members; checking the environment, as
+    // SourceTracker2 does, rejects the run before any sampling.
+    #[test]
+    fn shallow_collapsed_source_is_rejected_before_sampling() {
+        let a1: Vec<u32> = (0..20).map(|t| u32::from(t < 10)).collect();
+        let a2: Vec<u32> = (0..20).map(|t| u32::from(t >= 10)).collect();
+        let b: Vec<u32> = (0..20).map(|t| if t < 10 { 2 } else { 0 }).collect();
+        let sink = [1u32; 20];
+        let (table, ctx) = build(&[
+            ("a1", Role::Source, Some("envA"), &a1[..]),
+            ("a2", Role::Source, Some("envA"), &a2[..]),
+            ("b", Role::Source, Some("envB"), &b[..]),
+            ("s0", Role::Sink, None, &sink[..]),
+        ]);
+        let p = params(CollapseMethod::Mean, false);
+        let err = predict_sinks_rarefied(&table, &ctx, &p, &rarefy_cfg(Some(10), None), 1, 1)
+            .unwrap_err();
+        assert_eq!(
+            err,
+            Error::ShallowSamples {
+                what: "collapsed source",
+                depth: 10,
+                count: 1,
+                shallowest: 0,
+            }
+        );
+    }
+
+    // Sinks below the sink depth are refused up front too, counting every
+    // shallow sink and naming the shallowest, exactly as the reference does.
+    #[test]
+    fn shallow_sinks_are_rejected_before_sampling() {
+        let (table, ctx) = build(&[
+            ("a", Role::Source, Some("envA"), &[10, 0]),
+            ("b", Role::Source, Some("envB"), &[0, 10]),
+            ("s0", Role::Sink, None, &[8, 2]), // 10
+            ("s1", Role::Sink, None, &[3, 1]), // 4
+            ("s2", Role::Sink, None, &[2, 5]), // 7
+        ]);
+        let p = params(CollapseMethod::Sum, false);
+        let err =
+            predict_sinks_rarefied(&table, &ctx, &p, &rarefy_cfg(None, Some(8)), 1, 1).unwrap_err();
+        assert_eq!(
+            err,
+            Error::ShallowSamples {
+                what: "sink",
+                depth: 8,
+                count: 2,
+                shallowest: 4,
+            }
+        );
     }
 }

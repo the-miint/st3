@@ -117,6 +117,40 @@ pub(crate) fn active_depth(depth: Option<u32>) -> Option<u32> {
     depth.filter(|&d| d > 0)
 }
 
+/// Refuse a rarefaction request that some of `columns` cannot satisfy.
+///
+/// SourceTracker2 does not run when any sample of a role is shallower than that
+/// role's depth; this mirrors it. Returns [`Error::ShallowSamples`] naming
+/// `what` (the role as it reads in the message), `depth`, how many of `columns`
+/// fall short, and the shallowest total among them; `Ok(())` when every column
+/// reaches `depth`. One pass over the column totals, before any subsampling.
+pub(crate) fn check_depth(
+    table: &CountTable,
+    columns: impl IntoIterator<Item = usize>,
+    depth: u32,
+    what: &'static str,
+) -> Result<()> {
+    let mut count = 0usize;
+    let mut shallowest = u64::MAX;
+    for s in columns {
+        let total = table.column_sum(s);
+        if total < u64::from(depth) {
+            count += 1;
+            shallowest = shallowest.min(total);
+        }
+    }
+    if count == 0 {
+        Ok(())
+    } else {
+        Err(Error::ShallowSamples {
+            what,
+            depth,
+            count,
+            shallowest,
+        })
+    }
+}
+
 /// Rarefy every column of `table` to the same `depth`.
 ///
 /// `None` or `Some(0)` disables rarefaction (every column
@@ -467,5 +501,26 @@ mod tests {
             cfg.depths_for(&ctx),
             vec![None, Some(1000), None, Some(1000)]
         );
+    }
+
+    // The reference's fail-fast policy: a request some columns cannot satisfy
+    // is refused up front, naming how many fall short and the shallowest.
+    #[test]
+    fn check_depth_rejects_shallow_columns_with_count_and_shallowest() {
+        let t = table_3cols(); // column totals 100, 40, 80
+        assert_eq!(check_depth(&t, 0..3, 40, "sink"), Ok(()));
+        assert_eq!(
+            check_depth(&t, 0..3, 90, "sink"),
+            Err(Error::ShallowSamples {
+                what: "sink",
+                depth: 90,
+                count: 2,
+                shallowest: 40,
+            })
+        );
+        // Only the named columns are checked: s1 (40) is not among these.
+        assert_eq!(check_depth(&t, [0, 2], 80, "source"), Ok(()));
+        // A column exactly at the depth is not shallow.
+        assert_eq!(check_depth(&t, [1], 40, "source"), Ok(()));
     }
 }

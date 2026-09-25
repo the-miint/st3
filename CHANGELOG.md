@@ -26,6 +26,16 @@ breaking ABI change.
   subsamples a collapsed table, and `st3_run` lowers onto the new drivers. The
   sink-subsampling, source-subsampling, and sampler stages now draw from
   distinct seed-derived streams (#3).
+- Rarefaction now fails fast on shallow input, as SourceTracker2 does: when a
+  depth is set and a collapsed source environment (sink mode), a source sample
+  (leave-one-out), or a sink cannot reach it, the run is refused before any
+  sampling with `Error::ShallowSamples` in `st3-core` and the previously
+  reserved `ST3_STATUS_ERR_SHALLOW_SAMPLE` across the C ABI; the last-error
+  names the role, how many samples fall short, and the shallowest total.
+  Previously such samples were passed through unchanged and the run reported
+  success. The `rarefy` / `rarefy_per_sample` primitives keep their
+  flag-and-pass-through behaviour for callers composing their own pipeline
+  (#2).
 
 ## [1.0.0] — 2026-07-06
 
