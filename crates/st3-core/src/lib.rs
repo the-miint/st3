@@ -22,6 +22,8 @@
 //! sample in turn it holds that sample out, re-collapses the remaining sources,
 //! and estimates the held-out sample's composition over the source-scoped frame —
 //! a per-sample self-consistency check reusing the same [`SourceMixing`] output.
+//! [`predict_sinks_rarefied`] and [`predict_loo_rarefied`] are the same drivers
+//! with the reference's rarefaction order applied first, from a [`RarefyConfig`].
 //!
 //! [`simulate_two_source`] and [`run_two_source_recovery`] are the
 //! statistical-equivalence harness: they generate two-source Dirichlet mixtures
@@ -95,11 +97,11 @@ pub use estimate::{CooTally, GibbsEstimator, SinkEstimate, SinkModel, SinkVec};
 pub use eval::{
     run_two_source_recovery, simulate_two_source, RecoveryScore, SimConfig, Simulation,
 };
-pub use loo::predict_loo;
+pub use loo::{predict_loo, predict_loo_rarefied};
 pub use metadata::{Role, SampleContext};
 pub use params::GibbsParams;
-pub use predict::predict_sinks;
-pub use rarefy::{rarefy, rarefy_per_sample, Rarefied, RarefyConfig, SampleStatus};
+pub use predict::{predict_sinks, predict_sinks_rarefied};
+pub use rarefy::{check_depth, rarefy, rarefy_per_sample, Rarefied, RarefyConfig, SampleStatus};
 pub use rng::{rng_for_item, ItemRng};
 pub use table::{Count, CountTable, FeatureIdx};
 

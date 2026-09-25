@@ -4,9 +4,11 @@
 //! Generate the C header `st3.h` from the crate's `#[repr(C)]` types and
 //! `extern "C"` functions with cbindgen.
 //!
-//! The header is written into `OUT_DIR` (not committed), and its directory is
-//! exported to the crate and its tests via the `ST3_HEADER_DIR` compile-time
-//! environment variable so the C harness can `#include` it.
+//! The header is written into `OUT_DIR`, and its directory is exported to the
+//! crate and its tests via the `ST3_HEADER_DIR` compile-time environment
+//! variable so the C harness can `#include` it. A copy is committed at
+//! `include/st3.h` for consumers, who cannot locate `OUT_DIR`; `make header`
+//! refreshes it and the `committed_header_is_current` test keeps it honest.
 
 use std::env;
 use std::path::PathBuf;

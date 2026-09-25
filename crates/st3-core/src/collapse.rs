@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 
 use crate::error::{Axis, Error, Result};
 use crate::metadata::SampleContext;
+use crate::rarefy::rarefy;
 use crate::table::{Count, CountTable, FeatureIdx};
 
 /// How source samples in one environment are aggregated per taxon.
@@ -68,6 +69,31 @@ impl CollapsedSources {
     /// Panics if `env >= self.n_sources()`.
     pub fn column(&self, env: usize) -> (&[FeatureIdx], &[Count]) {
         self.table.column(env)
+    }
+
+    /// Subsample every environment column to `depth`, as SourceTracker2 does in
+    /// sink mode: collapse first, then rarefy the *collapsed* environments.
+    ///
+    /// `None` or `Some(0)` disables subsampling (the output equals the input). An
+    /// environment whose total is below `depth` is passed through unchanged,
+    /// exactly as [`crate::rarefy()`] does; a caller wanting the reference's
+    /// fail-fast policy calls [`crate::check_depth`] first, as the rarefied
+    /// drivers do. The environment order, the feature axis, and the collapse
+    /// method are preserved.
+    ///
+    /// # Errors
+    /// Those of [`crate::rarefy()`].
+    pub fn rarefy(
+        &self,
+        depth: Option<u32>,
+        with_replacement: bool,
+        seed: u64,
+    ) -> Result<CollapsedSources> {
+        let rarefied = rarefy(&self.table, depth, with_replacement, seed)?;
+        Ok(CollapsedSources {
+            table: rarefied.into_table(),
+            method: self.method,
+        })
     }
 }
 
@@ -282,5 +308,42 @@ mod tests {
         let loo = collapse_subset(&t, &[0, 1], &["A", "A"], CollapseMethod::Sum).unwrap();
         assert_eq!(loo.n_sources(), 1);
         assert_eq!(loo.env_names(), &["A".to_string()]);
+    }
+
+    // SourceTracker2 sink mode subsamples the *collapsed* environments, so the
+    // collapsed table must be rarefiable in place: every environment column
+    // lands on exactly `depth`, with names, feature axis, and method preserved.
+    #[test]
+    fn rarefy_subsamples_each_environment_to_depth() {
+        // A = {s0, s1} sums to 12; B = {s2} to 9. Depth 8 is below both.
+        let t = table_from_columns(2, &[&[3, 3], &[3, 3], &[5, 4]]);
+        let cs = collapse_subset(&t, &[0, 1, 2], &["A", "A", "B"], CollapseMethod::Sum).unwrap();
+        let r = cs.rarefy(Some(8), false, 7).unwrap();
+        assert_eq!(r.env_names(), cs.env_names());
+        assert_eq!(r.feature_ids(), cs.feature_ids());
+        assert_eq!(r.method(), CollapseMethod::Sum);
+        for env in 0..r.n_sources() {
+            assert_eq!(r.counts().column_sum(env), 8, "env {env}");
+        }
+    }
+
+    // An environment below the depth passes through unchanged, exactly like
+    // `rarefy` on a plain table; the policy for it belongs to the caller.
+    #[test]
+    fn rarefy_passes_a_shallow_environment_through() {
+        let t = table_from_columns(2, &[&[3, 3], &[3, 3], &[5, 4]]);
+        let cs = collapse_subset(&t, &[0, 1, 2], &["A", "A", "B"], CollapseMethod::Sum).unwrap();
+        // Depth 10: A (12) is subsampled, B (9) is not.
+        let r = cs.rarefy(Some(10), false, 7).unwrap();
+        assert_eq!(r.counts().column_sum(0), 10);
+        assert_eq!(r.column(1), cs.column(1));
+    }
+
+    #[test]
+    fn rarefy_disabled_is_the_identity() {
+        let t = table_from_columns(2, &[&[3, 3], &[5, 4]]);
+        let cs = collapse_subset(&t, &[0, 1], &["A", "B"], CollapseMethod::Mean).unwrap();
+        assert_eq!(cs.rarefy(None, false, 1).unwrap(), cs);
+        assert_eq!(cs.rarefy(Some(0), true, 1).unwrap(), cs);
     }
 }

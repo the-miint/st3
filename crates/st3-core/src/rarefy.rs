@@ -55,6 +55,11 @@ impl Rarefied {
         &self.status
     }
 
+    /// Consume the outcome, keeping only the rarefied table.
+    pub fn into_table(self) -> CountTable {
+        self.table
+    }
+
     /// Whether sampling was with replacement.
     pub fn with_replacement(&self) -> bool {
         self.with_replacement
@@ -104,6 +109,82 @@ impl RarefyConfig {
             depths[i as usize] = self.sink_depth;
         }
         depths
+    }
+}
+
+/// The depth a request enables: `None` and `Some(0)` both disable rarefaction.
+pub(crate) fn active_depth(depth: Option<u32>) -> Option<u32> {
+    depth.filter(|&d| d > 0)
+}
+
+/// Refuse a run whose `columns` include an all-zero column.
+///
+/// The lowest-index empty column is reported as [`Error::EmptySink`] (in
+/// leave-one-out the held-out sample plays the sink), exactly as the serial loop
+/// would report it. The drivers run this before any other work.
+pub(crate) fn require_nonempty(table: &CountTable, columns: &[u32]) -> Result<()> {
+    match columns.iter().find(|&&s| table.column_sum(s as usize) == 0) {
+        Some(&s) => Err(Error::EmptySink {
+            sample_index: s as usize,
+        }),
+        None => Ok(()),
+    }
+}
+
+/// Subsample the columns at `indices` to `depth`, leaving every other column
+/// untouched: the per-role stage of a rarefied run. Column `s` is seeded
+/// `rng_for_item(seed, s)`, as in [`rarefy_per_sample`].
+///
+/// # Errors
+/// Those of [`rarefy_per_sample`].
+pub(crate) fn rarefy_role(
+    table: &CountTable,
+    indices: &[u32],
+    depth: u32,
+    with_replacement: bool,
+    seed: u64,
+) -> Result<Rarefied> {
+    let mut depths = vec![None; table.n_samples()];
+    for &s in indices {
+        depths[s as usize] = Some(depth);
+    }
+    rarefy_per_sample(table, &depths, with_replacement, seed)
+}
+
+/// Refuse a rarefaction request that some of `columns` cannot satisfy.
+///
+/// SourceTracker2 does not run when any sample of a role is shallower than that
+/// role's depth. This is that policy as a primitive: the rarefied drivers apply
+/// it before any subsampling, and a caller composing its own pipeline (for
+/// example around [`CollapsedSources::rarefy`](crate::CollapsedSources::rarefy))
+/// calls it itself. Returns [`Error::ShallowSamples`] naming `what` (the role as
+/// it reads in the message), `depth`, how many of `columns` fall short, and the
+/// shallowest total among them; `Ok(())` when every column reaches `depth`. One
+/// pass over the column totals.
+pub fn check_depth(
+    table: &CountTable,
+    columns: impl IntoIterator<Item = usize>,
+    depth: u32,
+    what: &'static str,
+) -> Result<()> {
+    let mut count = 0usize;
+    let mut shallowest = u64::MAX;
+    for s in columns {
+        let total = table.column_sum(s);
+        if total < u64::from(depth) {
+            count += 1;
+            shallowest = shallowest.min(total);
+        }
+    }
+    if count == 0 {
+        Ok(())
+    } else {
+        Err(Error::ShallowSamples {
+            what,
+            depth,
+            count,
+            shallowest,
+        })
     }
 }
 
@@ -192,7 +273,7 @@ fn rarefy_impl(
 
     for s in 0..n_samples {
         let (rows, counts) = table.column(s);
-        match depth_of(s).filter(|&d| d > 0) {
+        match active_depth(depth_of(s)) {
             None => {
                 row_idx.extend_from_slice(rows);
                 values.extend_from_slice(counts);
@@ -457,5 +538,26 @@ mod tests {
             cfg.depths_for(&ctx),
             vec![None, Some(1000), None, Some(1000)]
         );
+    }
+
+    // The reference's fail-fast policy: a request some columns cannot satisfy
+    // is refused up front, naming how many fall short and the shallowest.
+    #[test]
+    fn check_depth_rejects_shallow_columns_with_count_and_shallowest() {
+        let t = table_3cols(); // column totals 100, 40, 80
+        assert_eq!(check_depth(&t, 0..3, 40, "sink"), Ok(()));
+        assert_eq!(
+            check_depth(&t, 0..3, 90, "sink"),
+            Err(Error::ShallowSamples {
+                what: "sink",
+                depth: 90,
+                count: 2,
+                shallowest: 40,
+            })
+        );
+        // Only the named columns are checked: s1 (40) is not among these.
+        assert_eq!(check_depth(&t, [0, 2], 80, "source"), Ok(()));
+        // A column exactly at the depth is not shallow.
+        assert_eq!(check_depth(&t, [1], 40, "source"), Ok(()));
     }
 }

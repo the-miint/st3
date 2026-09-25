@@ -5,6 +5,50 @@ All notable changes to SourceTracker3 are recorded here. Versions follow
 own version (`st3_abi_version`, `ST3_CONFIG_V1`) that is bumped only on a
 breaking ABI change.
 
+## [Unreleased]
+
+### Changed
+- The generated C header is committed at `crates/st3-capi/include/st3.h`, so a
+  consumer no longer has to locate cargo's `OUT_DIR`. `make header` refreshes
+  it and the test gate fails if it drifts from the generated one. The header
+  now states up front that the Arrow C Data Interface structs must be declared
+  before including it (#1).
+- Sink-mode rarefaction now follows SourceTracker2's order: the sources are
+  collapsed first and each *collapsed environment* is then subsampled to the
+  source depth, so every environment enters the sampler with exactly that many
+  sequences. Previously each source *sample* was subsampled before collapse,
+  which lowered the sampling variance of the pooled profile and, under mean
+  collapse, left the environment below the depth. Leave-one-out was already in
+  the reference order (per source sample, then per-fold collapse) and is
+  unchanged; its sink depth is now ignored, as in the reference. New
+  `predict_sinks_rarefied` and `predict_loo_rarefied` drivers in `st3-core`
+  take a `RarefyConfig` and implement this order, `CollapsedSources::rarefy`
+  subsamples a collapsed table, and `st3_run` lowers onto the new drivers. The
+  sink-subsampling, source-subsampling, and sampler stages now draw from
+  distinct seed-derived streams (#3).
+- Rarefaction now fails fast on shallow input, as SourceTracker2 does: when a
+  depth is set and a collapsed source environment (sink mode), a source sample
+  (leave-one-out), or a sink cannot reach it, the run is refused before any
+  sampling with `Error::ShallowSamples` in `st3-core` and the previously
+  reserved `ST3_STATUS_ERR_SHALLOW_SAMPLE` across the C ABI; the last-error
+  names the role, how many samples fall short, and the shallowest total.
+  Previously such samples were passed through unchanged and the run reported
+  success. The `rarefy` / `rarefy_per_sample` primitives keep their
+  flag-and-pass-through behaviour for callers composing their own pipeline,
+  who can apply the same policy with the public `check_depth` (#2).
+- Empty sinks (sink mode) and empty held-out sources (leave-one-out) are now
+  rejected before collapse, subsampling, model precompute, or the worker pool
+  start, rather than inside the per-item work, where with `jobs > 1` other
+  items could run their full Gibbs chains before the error surfaced. The
+  reported error is unchanged: the lowest-index empty column. This remains a
+  deliberate departure from SourceTracker2's leave-one-out, which silently
+  drops an all-zero source sample; st3 refuses it (#5).
+
+### Added
+- A CI job that type-checks `st3-capi` for `wasm32-unknown-emscripten`, the
+  target of duckdb-miint's DuckDB-Wasm build, so the crate stays buildable
+  there (#6).
+
 ## [1.0.0] — 2026-07-06
 
 First release. SourceTracker3 is a library-only, C/C++-facing reimplementation

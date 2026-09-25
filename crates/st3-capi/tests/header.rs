@@ -2,18 +2,30 @@
 // Copyright (c) 2026, The SourceTracker3 Development Team
 
 //! The build script generates `st3.h` via cbindgen. This asserts the header is
-//! produced and declares the full v1 surface. (Layout stability is guarded by the
-//! `offset_of!` tests in `config.rs`, not a golden-file diff of the header.)
+//! produced, declares the full v1 surface, and matches the committed copy that
+//! C consumers include. (Layout stability is guarded by the `offset_of!` tests
+//! in `config.rs`, not a golden-file diff of the header.)
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Read the header cbindgen generated from the current sources. Its directory
+/// (`ST3_HEADER_DIR`) is exported by build.rs via `cargo:rustc-env`.
+fn read_generated_header() -> String {
+    let path = Path::new(env!("ST3_HEADER_DIR")).join("st3.h");
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("reading st3.h at {}: {e}", path.display()))
+}
+
+/// The committed copy of the header, the one C consumers build against.
+fn committed_header_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("include")
+        .join("st3.h")
+}
 
 #[test]
 fn header_is_generated_and_declares_the_surface() {
-    // `ST3_HEADER_DIR` is exported by build.rs via `cargo:rustc-env`.
-    let dir = env!("ST3_HEADER_DIR");
-    let path = Path::new(dir).join("st3.h");
-    let content = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("reading st3.h at {}: {e}", path.display()));
+    let content = read_generated_header();
 
     assert!(!content.trim().is_empty(), "st3.h is empty");
 
@@ -55,10 +67,7 @@ fn header_is_generated_and_declares_the_surface() {
 /// cbindgen config regression or a stray rustdoc link is caught.
 #[test]
 fn header_carries_c_clean_docs() {
-    let dir = env!("ST3_HEADER_DIR");
-    let path = Path::new(dir).join("st3.h");
-    let content = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("reading st3.h at {}: {e}", path.display()));
+    let content = read_generated_header();
 
     // Doc comments are present: distinctive phrases from a function, a struct,
     // and an enum doc. Their absence means `documentation = true` regressed.
@@ -88,5 +97,47 @@ fn header_carries_c_clean_docs() {
     assert!(
         !content.contains('§'),
         "st3.h contains a `§` corpus section reference"
+    );
+}
+
+/// The committed copy at `include/st3.h` must be byte-identical to the header
+/// cbindgen just generated from the current sources. C consumers build against
+/// the committed copy (they cannot locate cargo's `OUT_DIR`), so a stale copy
+/// would silently disagree with the `#[repr(C)]` types and the exported
+/// functions. `make header` refreshes it.
+#[test]
+fn committed_header_is_current() {
+    let generated = read_generated_header();
+    let path = committed_header_path();
+    let committed = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!(
+            "reading the committed header at {}: {e}; run `make header` to create it",
+            path.display()
+        )
+    });
+    assert!(
+        committed == generated,
+        "the committed header {} differs from the one generated from the current \
+         sources; run `make header` and commit the result",
+        path.display()
+    );
+}
+
+/// The header refers to the Arrow C Data Interface structs by pointer without
+/// declaring them (deliberately, so a consumer's own Arrow declarations are
+/// used). The header must say so up front, so a consumer learns to declare them
+/// before including it without reading the example.
+#[test]
+fn header_tells_consumers_to_declare_the_arrow_structs() {
+    let content = read_generated_header();
+    let note = content
+        .find("Declare them before including this header")
+        .expect("st3.h is missing the note that the Arrow structs must be declared first");
+    let first_use = content
+        .find("ArrowArray *")
+        .expect("st3.h no longer refers to ArrowArray");
+    assert!(
+        note < first_use,
+        "the Arrow-declaration note must precede the first use of the Arrow structs"
     );
 }

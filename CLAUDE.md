@@ -86,7 +86,7 @@ runs in CI (`.github/workflows/ci.yml`) on every push and PR to `main`.
 ```bash
 make test         # the gate — must be green before any commit
 make fmt          # auto-fix formatting
-make header       # emit the cbindgen-generated header to target/st3.h
+make header       # refresh the committed header crates/st3-capi/include/st3.h
 make perf-guard   # opt-in wall-clock regression check (see below)
 ```
 
@@ -135,7 +135,9 @@ Cargo must understand edition 2024 to parse the graph at all. **Dropping to
 edition 2021 therefore does not lower the toolchain floor** — if matching
 rype's declared 1.70 ever matters, `cbindgen` is the blocker, not the edition.
 
-The floor is two-tier, which is why CI has two jobs:
+The floor is two-tier, which is why CI has two toolchain jobs (a third job
+only type-checks `st3-capi` for `wasm32-unknown-emscripten`, the DuckDB-Wasm
+target of duckdb-miint; see issue #6):
 
 - **1.85** to *depend on* the crates — library targets only.
 - **1.86** to run the benches and tests, because `criterion` 0.8 requires 1.86.

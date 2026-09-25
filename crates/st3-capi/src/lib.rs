@@ -26,7 +26,7 @@ mod status;
 use arrow::array::RecordBatch;
 use arrow::ffi::{FFI_ArrowArray, FFI_ArrowSchema};
 use arrow::ffi_stream::FFI_ArrowArrayStream;
-use st3_core::{predict_loo, predict_sinks, rarefy_per_sample, CountTable, Rarefied, SourceMixing};
+use st3_core::{predict_loo_rarefied, predict_sinks_rarefied, SourceMixing};
 
 use crate::handle::require_ptr;
 use crate::last_error::{clear_last_error, set_last_error};
@@ -104,36 +104,29 @@ pub unsafe extern "C" fn st3_table_from_arrow(
 /// Run the configured estimator over an imported table (the safe inner body of
 /// [`st3_run`]).
 ///
-/// Lowers the config to core inputs, optionally rarefies the table (reusing the
-/// same sample context, whose axis rarefaction preserves), then runs sink or
-/// leave-one-out source prediction.
+/// Lowers the config to core inputs and runs the rarefaction-aware sink or
+/// leave-one-out driver, which applies the reference's rarefaction order itself.
 fn run_inner(handle: &St3Table, config: &St3Config) -> Result<SourceMixing, St3Status> {
     let plan = config.to_core()?;
     let ds = handle.dataset();
-    let ctx = &ds.ctx;
-
-    // Rarefy up front if requested; the `Rarefied` owns the subsampled table, so
-    // it must outlive the prediction that borrows it.
-    let rarefied: Option<Rarefied> = if plan.rarefaction_requested() {
-        let depths = plan.rarefy.depths_for(ctx);
-        let r = rarefy_per_sample(&ds.table, &depths, plan.rarefy.with_replacement, plan.seed)
-            .map_err(|e| {
-                set_last_error(&e);
-                status_of_core(&e)
-            })?;
-        Some(r)
-    } else {
-        None
-    };
-    let table: &CountTable = match &rarefied {
-        Some(r) => r.table(),
-        None => &ds.table,
-    };
-
     let mixing = if plan.loo {
-        predict_loo(table, ctx, &plan.params, plan.seed, plan.jobs)
+        predict_loo_rarefied(
+            &ds.table,
+            &ds.ctx,
+            &plan.params,
+            &plan.rarefy,
+            plan.seed,
+            plan.jobs,
+        )
     } else {
-        predict_sinks(table, ctx, &plan.params, plan.seed, plan.jobs)
+        predict_sinks_rarefied(
+            &ds.table,
+            &ds.ctx,
+            &plan.params,
+            &plan.rarefy,
+            plan.seed,
+            plan.jobs,
+        )
     };
     mixing.map_err(|e| {
         set_last_error(&e);
@@ -145,8 +138,14 @@ fn run_inner(handle: &St3Table, config: &St3Config) -> Result<SourceMixing, St3S
 ///
 /// `table` is a handle from `st3_table_from_arrow`; `config` is a versioned
 /// `St3Config`. With `config.loo` set the run performs leave-one-out source
-/// prediction, otherwise sink prediction; rarefaction is applied first when a
-/// depth is configured. On success a new result handle is written to `*out` and
+/// prediction, otherwise sink prediction. Rarefaction follows SourceTracker2:
+/// in sink mode the sources are collapsed and each collapsed environment is then
+/// subsampled to `source_rarefaction_depth`, while each sink is subsampled to
+/// `sink_rarefaction_depth`; in leave-one-out mode each source sample is
+/// subsampled to `source_rarefaction_depth` and the sink depth is ignored. A
+/// depth of `0` disables that side; a sample (or collapsed environment) that
+/// cannot reach its depth fails the run with `ST3_STATUS_ERR_SHALLOW_SAMPLE`
+/// before any sampling. On success a new result handle is written to `*out` and
 /// must later be freed with `st3_result_free`. On failure `*out` is set to null
 /// and the reason is available from `st3_last_error`.
 ///
@@ -302,7 +301,9 @@ mod tests {
     use super::*;
     use std::mem::size_of;
 
-    use st3_core::{CollapseMethod, CountTable, GibbsParams, Role, SampleContext};
+    use st3_core::{
+        predict_loo, predict_sinks, CollapseMethod, CountTable, GibbsParams, Role, SampleContext,
+    };
 
     const SEED: u64 = 42;
 
@@ -466,25 +467,79 @@ mod tests {
         }
     }
 
+    // The ABI's rarefaction depths lower onto the core's rarefaction-aware sink
+    // driver (SourceTracker2's order: collapse, then subsample each collapsed
+    // environment to the source depth; sinks per sample), not onto a hand-rolled
+    // per-sample pass over the raw table.
     #[test]
     fn run_rarefaction_matches_core_direct_and_preserves_axis() {
         let (table, ctx) = dataset();
         let params = light_gibbs(CollapseMethod::Sum, false);
         // Rarefy sinks to depth 50, sources to 60 (both below their totals).
-        let depths = st3_core::RarefyConfig {
+        let rarefy = st3_core::RarefyConfig {
             source_depth: Some(60),
             sink_depth: Some(50),
             with_replacement: false,
-        }
-        .depths_for(&ctx);
-        let rarefied = st3_core::rarefy_per_sample(&table, &depths, false, SEED).unwrap();
-        let expected = predict_sinks(rarefied.table(), &ctx, &params, SEED, 1).unwrap();
+        };
+        let expected = predict_sinks_rarefied(&table, &ctx, &params, &rarefy, SEED, 1).unwrap();
 
         let config = config_from_params(&params, SEED, 1, false, 60, 50, false);
         let got = run_via_ffi(&table, &ctx, &config);
         assert_eq!(got, expected);
         // Sample axis preserved: still three sinks.
         assert_eq!(got.n_sinks(), 3);
+    }
+
+    // Leave-one-out lowers onto the core's rarefaction-aware LOO driver (per
+    // source sample; the sink depth plays no part).
+    #[test]
+    fn run_loo_rarefaction_matches_core_direct() {
+        let (table, ctx) = dataset();
+        let params = light_gibbs(CollapseMethod::Sum, false);
+        let rarefy = st3_core::RarefyConfig {
+            source_depth: Some(60),
+            sink_depth: Some(50),
+            with_replacement: true,
+        };
+        let expected = predict_loo_rarefied(&table, &ctx, &params, &rarefy, SEED, 1).unwrap();
+
+        let config = config_from_params(&params, SEED, 1, true, 60, 50, true);
+        let got = run_via_ffi(&table, &ctx, &config);
+        assert_eq!(got, expected);
+    }
+
+    // A sink shallower than the sink depth fails the run before any sampling
+    // with the reserved shallow-sample status, and the last-error carries the
+    // reference's facts (which role, how many, the shallowest). SourceTracker2
+    // refuses such a run rather than silently analysing under-depth samples.
+    #[test]
+    fn run_shallow_sink_returns_err_shallow_sample() {
+        let (table, ctx) = dataset();
+        let params = light_gibbs(CollapseMethod::Sum, false);
+        // Sinks total 100, 100, 120: a depth of 110 leaves two shallow.
+        let config = config_from_params(&params, SEED, 1, false, 0, 110, false);
+        let handle = Box::into_raw(Box::new(St3Table::new(table, ctx)));
+        let mut out: *mut St3Result = std::ptr::null_mut();
+        clear_last_error();
+        // SAFETY: `handle` is a live handle; `config`/`out` are valid pointers.
+        let status = unsafe { st3_run(handle, &config, &mut out) };
+        assert_eq!(status, St3Status::ErrShallowSample);
+        assert!(out.is_null());
+        // SAFETY: `st3_last_error` returns null or a NUL-terminated thread-local
+        // string that stays valid until the next call on this thread.
+        let msg = unsafe { std::ffi::CStr::from_ptr(st3_last_error()) }
+            .to_str()
+            .unwrap()
+            .to_owned();
+        for fact in [
+            "sink samples at depth 110",
+            "2 of them",
+            "shallowest has 100",
+        ] {
+            assert!(msg.contains(fact), "last error {msg:?} lacks {fact:?}");
+        }
+        // SAFETY: `handle` came from `Box::into_raw` above and is freed once.
+        unsafe { st3_table_free(handle) };
     }
 
     #[test]
