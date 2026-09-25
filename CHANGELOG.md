@@ -34,13 +34,15 @@ breaking ABI change.
   names the role, how many samples fall short, and the shallowest total.
   Previously such samples were passed through unchanged and the run reported
   success. The `rarefy` / `rarefy_per_sample` primitives keep their
-  flag-and-pass-through behaviour for callers composing their own pipeline
-  (#2).
+  flag-and-pass-through behaviour for callers composing their own pipeline,
+  who can apply the same policy with the public `check_depth` (#2).
 - Empty sinks (sink mode) and empty held-out sources (leave-one-out) are now
   rejected before collapse, subsampling, model precompute, or the worker pool
   start, rather than inside the per-item work, where with `jobs > 1` other
   items could run their full Gibbs chains before the error surfaced. The
-  reported error is unchanged: the lowest-index empty column (#5).
+  reported error is unchanged: the lowest-index empty column. This remains a
+  deliberate departure from SourceTracker2's leave-one-out, which silently
+  drops an all-zero source sample; st3 refuses it (#5).
 
 ### Added
 - A CI job that type-checks `st3-capi` for `wasm32-unknown-emscripten`, the

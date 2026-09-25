@@ -19,12 +19,14 @@
 
 use crate::collapse::{collapse_sources, CollapsedSources};
 use crate::collate::{collate, SourceMixing};
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::estimate::{GibbsEstimator, SinkModel, SinkVec};
 use crate::metadata::SampleContext;
 use crate::parallel::map_items;
 use crate::params::GibbsParams;
-use crate::rarefy::{active_depth, check_depth, rarefy_per_sample, Rarefied, RarefyConfig};
+use crate::rarefy::{
+    active_depth, check_depth, rarefy_role, require_nonempty, Rarefied, RarefyConfig,
+};
 use crate::rng::{rng_for_item, stage_seed, STAGE_RAREFY_SINKS, STAGE_RAREFY_SOURCES};
 use crate::table::CountTable;
 
@@ -80,10 +82,10 @@ use crate::table::CountTable;
 /// ```
 ///
 /// # Errors
-/// [`Error::EmptySink`] if a sink column has no sequences (the lowest-index empty
+/// [`crate::Error::EmptySink`] if a sink column has no sequences (the lowest-index empty
 /// sink, checked before any other work and so independent of `jobs`); propagates
 /// [`collapse_sources`], [`GibbsEstimator::prepare`] (parameter validation), and
-/// [`Error::ThreadPool`].
+/// [`crate::Error::ThreadPool`].
 pub fn predict_sinks(
     table: &CountTable,
     ctx: &SampleContext,
@@ -104,7 +106,7 @@ pub fn predict_sinks(
 /// it pools. Sinks are subsampled per sample to `rarefy.sink_depth`. A depth of
 /// `None` (or `0`) leaves that side untouched; with both unset this is exactly
 /// [`predict_sinks`]. An environment or sink shallower than its depth refuses
-/// the run with [`Error::ShallowSamples`] before any sampling, as the reference
+/// the run with [`crate::Error::ShallowSamples`] before any sampling, as the reference
 /// does; the error names the role, how many fall short, and the shallowest.
 ///
 /// Each stochastic stage — sink subsampling, source subsampling, and the
@@ -154,7 +156,7 @@ pub fn predict_sinks(
 /// ```
 ///
 /// # Errors
-/// Those of [`predict_sinks`], plus [`Error::ShallowSamples`] and
+/// Those of [`predict_sinks`], plus [`crate::Error::ShallowSamples`] and
 /// [`crate::rarefy()`]'s.
 pub fn predict_sinks_rarefied(
     table: &CountTable,
@@ -167,59 +169,49 @@ pub fn predict_sinks_rarefied(
     // Cheap preconditions first, so a run that cannot succeed fails before
     // collapse, subsampling, model precompute, or the worker pool spend anything
     // on it. The lowest-index empty sink is reported, as the serial loop would.
-    if let Some(&s) = ctx
-        .sink_indices()
-        .iter()
-        .find(|&&s| table.column_sum(s as usize) == 0)
-    {
-        return Err(Error::EmptySink {
-            sample_index: s as usize,
-        });
-    }
+    require_nonempty(table, ctx.sink_indices())?;
 
-    // Reference order: collapse, refuse a collapsed environment below the depth,
-    // then subsample the collapsed environments.
+    // Reference order: collapse, then subsample the collapsed environments. Both
+    // depth checks run before either subsampling stage, so a shallow sink never
+    // pays for the source subsampling first.
     let sources = collapse_sources(table, ctx, params.collapse)?;
-    let sources = match active_depth(rarefy.source_depth) {
-        Some(depth) => {
-            check_depth(
-                sources.counts(),
-                0..sources.n_sources(),
-                depth,
-                "collapsed source",
-            )?;
-            sources.rarefy(
-                Some(depth),
-                rarefy.with_replacement,
-                stage_seed(seed, STAGE_RAREFY_SOURCES),
-            )?
-        }
+    let source_depth = active_depth(rarefy.source_depth);
+    let sink_depth = active_depth(rarefy.sink_depth);
+    if let Some(depth) = source_depth {
+        check_depth(
+            sources.counts(),
+            0..sources.n_sources(),
+            depth,
+            "collapsed source",
+        )?;
+    }
+    if let Some(depth) = sink_depth {
+        check_depth(
+            table,
+            ctx.sink_indices().iter().map(|&s| s as usize),
+            depth,
+            "sink",
+        )?;
+    }
+    let sources = match source_depth {
+        Some(depth) => sources.rarefy(
+            Some(depth),
+            rarefy.with_replacement,
+            stage_seed(seed, STAGE_RAREFY_SOURCES),
+        )?,
         None => sources,
     };
 
     // Sinks are subsampled per sample; the source columns of `table` are left
-    // alone (their depth is `None` here) because the collapsed copy above is what
-    // the sampler sees.
-    let sinks: Option<Rarefied> = match active_depth(rarefy.sink_depth) {
-        Some(depth) => {
-            check_depth(
-                table,
-                ctx.sink_indices().iter().map(|&s| s as usize),
-                depth,
-                "sink",
-            )?;
-            let depths = RarefyConfig {
-                source_depth: None,
-                ..*rarefy
-            }
-            .depths_for(ctx);
-            Some(rarefy_per_sample(
-                table,
-                &depths,
-                rarefy.with_replacement,
-                stage_seed(seed, STAGE_RAREFY_SINKS),
-            )?)
-        }
+    // alone because the collapsed copy above is what the sampler sees.
+    let sinks: Option<Rarefied> = match sink_depth {
+        Some(depth) => Some(rarefy_role(
+            table,
+            ctx.sink_indices(),
+            depth,
+            rarefy.with_replacement,
+            stage_seed(seed, STAGE_RAREFY_SINKS),
+        )?),
         None => None,
     };
     let sink_table = sinks.as_ref().map_or(table, Rarefied::table);
@@ -264,6 +256,7 @@ fn estimate_sinks(
 mod tests {
     use super::*;
     use crate::collapse::CollapseMethod;
+    use crate::error::Error;
     use crate::metadata::Role;
 
     /// Build a table + context from dense columns
@@ -591,22 +584,26 @@ mod tests {
         );
     }
 
-    // Cheap input preconditions run before any expensive work. An empty sink is
-    // reported before the source model is prepared (where the sampler
-    // parameters are validated), and therefore before collapse, subsampling,
-    // or the worker pool spend anything on a run that cannot succeed. With
-    // `jobs > 1` the alternative is other sinks running full chains first.
+    // Cheap input preconditions run before any other work. This run also
+    // carries a sum-collapse overflow (rejected by collapse), a sink below the
+    // sink depth (rejected by the depth check), and an invalid sampler
+    // parameter (rejected when the model is prepared). The empty sink must win,
+    // which pins the scan ahead of collapse, the depth checks, subsampling, and
+    // the worker pool. With `jobs > 1` the alternative is other sinks running
+    // full chains before the error surfaces.
     #[test]
-    fn empty_sink_is_reported_before_the_model_is_prepared() {
+    fn empty_sink_is_reported_before_collapse_depth_checks_and_the_model() {
         let (table, ctx) = build(&[
-            ("a", Role::Source, Some("envA"), &[10, 0]),
+            ("a1", Role::Source, Some("envA"), &[3_000_000_000, 0]),
+            ("a2", Role::Source, Some("envA"), &[2_000_000_000, 0]),
             ("b", Role::Source, Some("envB"), &[0, 10]),
             ("s0", Role::Sink, None, &[5, 5]),
             ("empty", Role::Sink, None, &[0, 0]),
         ]);
         let mut p = params(CollapseMethod::Sum, false);
-        p.restarts = 0; // invalid; rejected when the model is prepared
-        let err = predict_sinks(&table, &ctx, &p, 1, 1).unwrap_err();
-        assert_eq!(err, Error::EmptySink { sample_index: 3 });
+        p.restarts = 0;
+        let err = predict_sinks_rarefied(&table, &ctx, &p, &rarefy_cfg(None, Some(100)), 1, 1)
+            .unwrap_err();
+        assert_eq!(err, Error::EmptySink { sample_index: 4 });
     }
 }

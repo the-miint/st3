@@ -77,8 +77,9 @@ impl CollapsedSources {
     /// `None` or `Some(0)` disables subsampling (the output equals the input). An
     /// environment whose total is below `depth` is passed through unchanged,
     /// exactly as [`crate::rarefy()`] does; a caller wanting the reference's
-    /// fail-fast policy checks the totals first. The environment order, the
-    /// feature axis, and the collapse method are preserved.
+    /// fail-fast policy calls [`crate::check_depth`] first, as the rarefied
+    /// drivers do. The environment order, the feature axis, and the collapse
+    /// method are preserved.
     ///
     /// # Errors
     /// Those of [`crate::rarefy()`].

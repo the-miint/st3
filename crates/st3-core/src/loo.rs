@@ -44,12 +44,12 @@ use std::collections::{BTreeSet, HashMap};
 
 use crate::collapse::collapse_subset;
 use crate::collate::{mean_std_over_ensemble, SourceMixing};
-use crate::error::{Error, Result};
+use crate::error::Result;
 use crate::estimate::{GibbsEstimator, SinkModel, SinkVec};
 use crate::metadata::SampleContext;
 use crate::parallel::map_items;
 use crate::params::GibbsParams;
-use crate::rarefy::{active_depth, check_depth, rarefy_per_sample, RarefyConfig};
+use crate::rarefy::{active_depth, check_depth, rarefy_role, require_nonempty, RarefyConfig};
 use crate::rng::{rng_for_item, stage_seed, STAGE_RAREFY_SOURCES};
 use crate::table::CountTable;
 
@@ -75,7 +75,8 @@ struct FoldRow {
 /// `jobs` sizes a per-call scoped worker pool: `0` uses all logical cores, `1`
 /// runs serially, and `n` uses `n` threads. Each fold is seeded from `(seed, k)`
 /// and rows are assembled in fold order, so the output is byte-identical
-/// regardless of `jobs`.
+/// regardless of `jobs`. Equivalent to [`predict_loo_rarefied`] with
+/// rarefaction disabled.
 ///
 /// # Examples
 /// ```
@@ -119,11 +120,13 @@ struct FoldRow {
 /// ```
 ///
 /// # Errors
-/// [`Error::EmptySink`] if a source column has no sequences (the lowest-index
-/// empty source, checked before any fold runs and so independent of `jobs`);
-/// propagates [`collapse_subset`] ([`Error::NoSources`] when only a single
+/// [`crate::Error::EmptySink`] if a source column has no sequences (the lowest-index
+/// empty source, checked before any fold runs and so independent of `jobs`).
+/// This is a deliberate departure from SourceTracker2, which silently drops an
+/// all-zero source sample from its leave-one-out run: st3 refuses it, so a bad
+/// input never disappears from the folds unnoticed. Propagates [`collapse_subset`] ([`crate::Error::NoSources`] when only a single
 /// source sample exists in total, so nothing remains after holding it out),
-/// [`GibbsEstimator::prepare`] (parameter validation), and [`Error::ThreadPool`].
+/// [`GibbsEstimator::prepare`] (parameter validation), and [`crate::Error::ThreadPool`].
 /// The lowest-index fold's error is returned, independent of `jobs`.
 pub fn predict_loo(
     table: &CountTable,
@@ -132,20 +135,21 @@ pub fn predict_loo(
     seed: u64,
     jobs: usize,
 ) -> Result<SourceMixing> {
+    predict_loo_rarefied(table, ctx, params, &RarefyConfig::default(), seed, jobs)
+}
+
+/// Run every fold over the fixed source-scoped frame: the shared body of the
+/// two leave-one-out drivers. Every source column must be non-empty (the caller
+/// has checked).
+fn estimate_folds(
+    table: &CountTable,
+    ctx: &SampleContext,
+    params: &GibbsParams,
+    seed: u64,
+    jobs: usize,
+) -> Result<SourceMixing> {
     let source_indices = ctx.source_indices();
     let source_envs = ctx.source_envs();
-
-    // Cheap precondition first, so a run that cannot succeed fails before any
-    // fold collapses, prepares a model, or the worker pool starts. The
-    // lowest-index empty source is reported, as the serial loop would.
-    if let Some(&s) = source_indices
-        .iter()
-        .find(|&&s| table.column_sum(s as usize) == 0)
-    {
-        return Err(Error::EmptySink {
-            sample_index: s as usize,
-        });
-    }
 
     // Fixed full frame: sorted-unique SOURCE environments (a `BTreeSet` sorts in
     // the same byte order as collapse's `BTreeMap`), then `Unknown` last. Scoping
@@ -230,14 +234,14 @@ pub fn predict_loo(
 /// the result. `rarefy.sink_depth` is ignored: sinks play no part in
 /// leave-one-out. A depth of `None` (or `0`) makes this exactly [`predict_loo`].
 /// A source sample shallower than the depth refuses the run with
-/// [`Error::ShallowSamples`] before any fold runs, as the reference does.
+/// [`crate::Error::ShallowSamples`] before any fold runs, as the reference does.
 ///
 /// The subsampling stage draws from its own stream derived from `seed`, distinct
 /// from the sampler's, so the folds' randomness for a given seed is the same
 /// with or without rarefaction; the output never depends on `jobs`.
 ///
 /// # Errors
-/// Those of [`predict_loo`], plus [`Error::ShallowSamples`] and
+/// Those of [`predict_loo`], plus [`crate::Error::ShallowSamples`] and
 /// [`crate::rarefy()`]'s.
 pub fn predict_loo_rarefied(
     table: &CountTable,
@@ -247,6 +251,10 @@ pub fn predict_loo_rarefied(
     seed: u64,
     jobs: usize,
 ) -> Result<SourceMixing> {
+    // Cheap precondition first, as in sink mode, so an all-zero source is
+    // reported as empty (never as shallow) and before any fold does work.
+    require_nonempty(table, ctx.source_indices())?;
+
     match active_depth(rarefy.source_depth) {
         Some(depth) => {
             check_depth(
@@ -255,20 +263,16 @@ pub fn predict_loo_rarefied(
                 depth,
                 "source",
             )?;
-            let depths = RarefyConfig {
-                sink_depth: None,
-                ..*rarefy
-            }
-            .depths_for(ctx);
-            let rarefied = rarefy_per_sample(
+            let rarefied = rarefy_role(
                 table,
-                &depths,
+                ctx.source_indices(),
+                depth,
                 rarefy.with_replacement,
                 stage_seed(seed, STAGE_RAREFY_SOURCES),
             )?;
-            predict_loo(rarefied.table(), ctx, params, seed, jobs)
+            estimate_folds(rarefied.table(), ctx, params, seed, jobs)
         }
-        None => predict_loo(table, ctx, params, seed, jobs),
+        None => estimate_folds(table, ctx, params, seed, jobs),
     }
 }
 
@@ -314,7 +318,9 @@ fn scatter_into_frame(
 mod tests {
     use super::*;
     use crate::collapse::CollapseMethod;
+    use crate::error::Error;
     use crate::metadata::Role;
+    use crate::rarefy::rarefy_per_sample;
 
     /// Build a table + context from dense columns `(sample_id, role, env, counts)`
     /// (each `counts` has length `τ`). Mirrors the `predict` test helper.
@@ -635,20 +641,26 @@ mod tests {
         assert_eq!(got, predict_loo(&table, &ctx, &p, 3, 1).unwrap());
     }
 
-    // Cheap input preconditions run before any fold does work. An empty
-    // held-out source is reported before fold 0 collapses its reduced sources
-    // and prepares its model (where the sampler parameters are validated), and
-    // therefore before the worker pool starts.
+    // Cheap input preconditions run before any fold does work, with the same
+    // precedence as sink mode. This run also carries a sum-collapse overflow in
+    // fold 0's reduced sources, a source below the source depth (the empty one,
+    // which must be reported as empty, not shallow), and an invalid sampler
+    // parameter. The empty source must win.
     #[test]
-    fn empty_held_out_source_is_reported_before_any_fold_runs() {
+    fn empty_held_out_source_is_reported_before_depth_checks_and_any_fold() {
         let (table, ctx) = build(&[
-            ("a", Role::Source, Some("envA"), &[10, 0]),
-            ("z", Role::Source, Some("envB"), &[0, 0]),
-            ("c", Role::Source, Some("envA"), &[5, 5]),
+            ("z", Role::Source, Some("envA"), &[0, 0]),
+            ("big1", Role::Source, Some("envA"), &[3_000_000_000, 0]),
+            ("big2", Role::Source, Some("envA"), &[2_000_000_000, 0]),
         ]);
         let mut p = params(CollapseMethod::Sum);
-        p.restarts = 0; // invalid; rejected when a fold prepares its model
-        let err = predict_loo(&table, &ctx, &p, 1, 1).unwrap_err();
-        assert_eq!(err, Error::EmptySink { sample_index: 1 });
+        p.restarts = 0;
+        let cfg = RarefyConfig {
+            source_depth: Some(10),
+            sink_depth: None,
+            with_replacement: false,
+        };
+        let err = predict_loo_rarefied(&table, &ctx, &p, &cfg, 1, 1).unwrap_err();
+        assert_eq!(err, Error::EmptySink { sample_index: 0 });
     }
 }

@@ -56,7 +56,6 @@ pub(crate) fn stage_seed(seed: u64, stage: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::Rng;
 
     #[test]
     fn same_seed_and_index_give_identical_stream() {

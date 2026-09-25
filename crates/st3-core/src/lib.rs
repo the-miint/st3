@@ -101,7 +101,7 @@ pub use loo::{predict_loo, predict_loo_rarefied};
 pub use metadata::{Role, SampleContext};
 pub use params::GibbsParams;
 pub use predict::{predict_sinks, predict_sinks_rarefied};
-pub use rarefy::{rarefy, rarefy_per_sample, Rarefied, RarefyConfig, SampleStatus};
+pub use rarefy::{check_depth, rarefy, rarefy_per_sample, Rarefied, RarefyConfig, SampleStatus};
 pub use rng::{rng_for_item, ItemRng};
 pub use table::{Count, CountTable, FeatureIdx};
 
