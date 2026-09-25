@@ -43,17 +43,19 @@ perf-guard: bench
 build:
 	cargo build --workspace
 
-# Emit the cbindgen-generated C header to a stable path for C consumers. The
-# header is generated into the release build's OUT_DIR during compilation (it is
-# not committed); this builds the C ABI crate, locates the freshest generated
-# copy under target/release, and copies it to target/st3.h. Not part of
-# `make test`.
+# Refresh the committed C header from the cbindgen output of a fresh build.
+# C consumers include crates/st3-capi/include/st3.h (they cannot locate cargo's
+# OUT_DIR, where build.rs writes the generated copy). The
+# `committed_header_is_current` test in `make test` fails whenever the committed
+# copy drifts from the generated one, so run this after any change to the C ABI
+# surface and commit the result. Builds the C ABI crate, locates the freshest
+# generated copy under target/debug, and copies it into place.
 header:
-	cargo build --release -p st3-capi
-	@hdr=$$(find target/release -path '*st3-capi*/out/st3.h' -printf '%T@ %p\n' \
+	cargo build -p st3-capi
+	@hdr=$$(find target/debug -path '*st3-capi*/out/st3.h' -printf '%T@ %p\n' \
 		| sort -rn | head -1 | cut -d' ' -f2-); \
 	if [ -z "$$hdr" ]; then \
-		echo "st3.h not found under target/release; did the build run?" >&2; exit 1; \
+		echo "st3.h not found under target/debug; did the build run?" >&2; exit 1; \
 	fi; \
-	cp "$$hdr" target/st3.h; \
-	echo "st3.h -> target/st3.h"
+	mkdir -p crates/st3-capi/include && cp "$$hdr" crates/st3-capi/include/st3.h && \
+	echo "st3.h -> crates/st3-capi/include/st3.h"

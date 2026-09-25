@@ -13,11 +13,16 @@ cross the C boundary.
 
 ```sh
 cargo build --release          # -> target/release/libst3.{so,a}
-make header                    # -> target/st3.h (generated, not committed)
+# The header is committed at include/st3.h; `make header` refreshes it after a
+# change to the C ABI surface (the test gate fails if it drifts).
 
-cc -std=c11 -I target my_app.c -L target/release -lst3 -lm -o my_app
+cc -std=c11 -I crates/st3-capi/include my_app.c -L target/release -lst3 -lm -o my_app
 LD_LIBRARY_PATH=target/release ./my_app
 ```
+
+The header refers to the Arrow C Data Interface structs (`ArrowArray`,
+`ArrowSchema`, `ArrowArrayStream`) without declaring them; declare them before
+including it, e.g. by including Arrow's `abi.h`.
 
 See [`examples/usage.c`](examples/usage.c) for a complete, commented walkthrough:
 build a dataset over the Arrow C Data Interface, run source attribution, read the

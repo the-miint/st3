@@ -86,7 +86,7 @@ runs in CI (`.github/workflows/ci.yml`) on every push and PR to `main`.
 ```bash
 make test         # the gate — must be green before any commit
 make fmt          # auto-fix formatting
-make header       # emit the cbindgen-generated header to target/st3.h
+make header       # refresh the committed header crates/st3-capi/include/st3.h
 make perf-guard   # opt-in wall-clock regression check (see below)
 ```
 

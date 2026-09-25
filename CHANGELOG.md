@@ -5,6 +5,15 @@ All notable changes to SourceTracker3 are recorded here. Versions follow
 own version (`st3_abi_version`, `ST3_CONFIG_V1`) that is bumped only on a
 breaking ABI change.
 
+## [Unreleased]
+
+### Changed
+- The generated C header is committed at `crates/st3-capi/include/st3.h`, so a
+  consumer no longer has to locate cargo's `OUT_DIR`. `make header` refreshes
+  it and the test gate fails if it drifts from the generated one. The header
+  now states up front that the Arrow C Data Interface structs must be declared
+  before including it (#1).
+
 ## [1.0.0] — 2026-07-06
 
 First release. SourceTracker3 is a library-only, C/C++-facing reimplementation
