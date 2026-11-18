@@ -7,7 +7,8 @@
  * struct tag only, with no typedef, behind the standard ARROW_C_DATA_INTERFACE
  * and ARROW_C_STREAM_INTERFACE guards. The tests include this rather than
  * declaring typedefs of their own, so they compile st3.h exactly as a real C
- * consumer of abi.h does.
+ * consumer of abi.h does. examples/usage.c carries its own copy of these
+ * declarations, so the example stays self-contained; keep the two in step.
  */
 
 #include <stdint.h>

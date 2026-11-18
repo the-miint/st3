@@ -237,7 +237,7 @@ enum St3Status st3_result_stds(const struct St3Result *result,
 //
 // # Safety
 // `result` must be a live handle from `st3_run`; `out_stream` must be a valid,
-// writable, aligned pointer to an uninitialized `ArrowArrayStream` slot.
+// writable, aligned pointer to an uninitialized `struct ArrowArrayStream` slot.
 enum St3Status st3_result_contingency_stream(const struct St3Result *result,
                                              struct ArrowArrayStream *out_stream);
 

@@ -74,9 +74,11 @@ static struct ArrowSchema coo_schema = {
     "+s", NULL, NULL, 0, 3, coo_schema_children, NULL, noop_release_schema,
     NULL};
 
-/* feature_ids: ["f0","f1","f2"] (Utf8). */
+/* feature_ids: ["f0","f1","f2"] (Utf8). The character arrays are sized by their
+ * literals, keeping a trailing NUL the offsets never reach (an exactly filled
+ * array trips GCC 15's -Wextra). */
 static int32_t fid_offsets[N_FEATURES + 1] = {0, 2, 4, 6};
-static char fid_data[6] = "f0f1f2";
+static char fid_data[] = "f0f1f2";
 static const void *fid_bufs[3] = {NULL, fid_offsets, fid_data};
 static struct ArrowArray fid_arr = {
     N_FEATURES, 0, 0, 3, 0, fid_bufs, NULL, NULL, noop_release_array, NULL};
@@ -85,13 +87,13 @@ static struct ArrowSchema fid_schema = {
 
 /* metadata: sample_id / role / env (env nullable). */
 static int32_t sid_offsets[N_SAMPLES + 1] = {0, 5, 10, 15, 20};
-static char sid_data[20] = "src_asrc_bsink0sink1";
+static char sid_data[] = "src_asrc_bsink0sink1";
 static const void *sid_bufs[3] = {NULL, sid_offsets, sid_data};
 static struct ArrowArray sid_arr = {
     N_SAMPLES, 0, 0, 3, 0, sid_bufs, NULL, NULL, noop_release_array, NULL};
 
 static int32_t role_offsets[N_SAMPLES + 1] = {0, 6, 12, 16, 20};
-static char role_data[20] = "sourcesourcesinksink";
+static char role_data[] = "sourcesourcesinksink";
 static const void *role_bufs[3] = {NULL, role_offsets, role_data};
 static struct ArrowArray role_arr = {
     N_SAMPLES, 0, 0, 3, 0, role_bufs, NULL, NULL, noop_release_array, NULL};
@@ -99,7 +101,7 @@ static struct ArrowArray role_arr = {
 /* env = ["envA","envB",NULL,NULL]: validity bits 0b0011, two nulls. */
 static uint8_t env_validity[1] = {0x03};
 static int32_t env_offsets[N_SAMPLES + 1] = {0, 4, 8, 8, 8};
-static char env_data[8] = "envAenvB";
+static char env_data[] = "envAenvB";
 static const void *env_bufs[3] = {env_validity, env_offsets, env_data};
 static struct ArrowArray env_arr = {
     N_SAMPLES, 2, 0, 3, 0, env_bufs, NULL, NULL, noop_release_array, NULL};

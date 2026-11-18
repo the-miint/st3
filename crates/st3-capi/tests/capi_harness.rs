@@ -34,9 +34,10 @@ fn c_harness_runs_end_to_end() {
     let harness_c = PathBuf::from(manifest_dir).join("tests").join("harness.c");
     assert!(harness_c.exists(), "missing {}", harness_c.display());
 
-    // The shared library is target/<profile>/libst3.so, and the test binary is
-    // somewhere below target/<profile>: in deps/ under Cargo's original layout,
-    // in build/st3-capi/<hash>/out/ under its newer build-dir layout (seen with
+    // Cargo writes the shared library to target/<profile>/libst3.so and the test
+    // binary somewhere below target/<profile>: to deps/ under its original
+    // layout, which holds the library too (so the search stops there), and to
+    // build/st3-capi/<hash>/out/ under its newer build-dir layout (seen with
     // Cargo 1.100). Take the nearest ancestor that holds the library.
     let exe = std::env::current_exe().expect("current_exe");
     let profile_dir: &Path = exe

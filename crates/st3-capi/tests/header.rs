@@ -134,6 +134,37 @@ fn committed_header_is_current() {
     );
 }
 
+/// The header names each Arrow struct by tag and forward-declares the tag
+/// before any prototype takes it (cbindgen's `[export.rename]` and
+/// `after_includes`), which is what lets a C consumer of Arrow's `abi.h`
+/// include it in any order. The compile test below proves the header works;
+/// this check needs no compiler, so it still guards the header where that test
+/// skips.
+#[test]
+fn header_forward_declares_the_arrow_struct_tags() {
+    let content = read_generated_header();
+    for name in ["ArrowArray", "ArrowSchema", "ArrowArrayStream"] {
+        let decl = content
+            .find(&format!("struct {name};"))
+            .unwrap_or_else(|| panic!("st3.h does not forward-declare `struct {name}`"));
+        let first_use = content
+            .find(&format!("struct {name} *"))
+            .unwrap_or_else(|| panic!("st3.h no longer takes a `struct {name} *`"));
+        assert!(
+            decl < first_use,
+            "st3.h forward-declares `struct {name}` only after a prototype uses it"
+        );
+        let bare = format!("{name} *");
+        for (at, _) in content.match_indices(&bare) {
+            assert!(
+                content[..at].ends_with("struct "),
+                "st3.h uses the bare name `{bare}`, which a C consumer of abi.h cannot \
+                 compile"
+            );
+        }
+    }
+}
+
 /// Arrow's own `abi.h` and nanoarrow declare the C Data Interface structs by
 /// tag only (`struct ArrowSchema { ... };`, no typedef), and a consumer may
 /// include them before `st3.h`, after it, or not at all. `header_consumer.c`

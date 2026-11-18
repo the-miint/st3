@@ -57,9 +57,12 @@ breaking ABI change.
   consumers that wrote their own typedefs, compiled. The header now names the
   structs by tag and forward-declares them, so it compiles with `abi.h`
   included before it, after it, or not at all; this replaces the note added
-  for #1 that the structs must be declared first. Existing consumers still
-  compile, and the ABI is unchanged. The C example and harness now declare the
-  structs as `abi.h` does and compile with `-Werror`.
+  for #1 that the structs must be declared first. The ABI is unchanged, and
+  consumers that declare the structs under these tags (as `abi.h`, nanoarrow
+  and DuckDB do), with or without typedefs, still compile; one that declared
+  them only as typedefs of anonymous structs (`typedef struct { ... }
+  ArrowArray;`) must now name the tags. The C example and harness now declare
+  the structs as `abi.h` does and compile with `-Werror`.
 
 ## [1.0.0] — 2026-07-06
 
