@@ -59,6 +59,7 @@ fn c_harness_runs_end_to_end() {
         .arg("-std=c11")
         .arg("-Wall")
         .arg("-Wextra")
+        .arg("-Werror")
         .arg(format!("-I{header_dir}"))
         .arg(&harness_c)
         .arg("-o")

@@ -12,10 +12,11 @@ header = """/* SPDX-License-Identifier: BSD-3-Clause */
 /*
  * SourceTracker3 C ABI.
  *
- * This header refers to the Arrow C Data Interface structs -- ArrowArray,
- * ArrowSchema, and ArrowArrayStream -- by pointer only and deliberately does
- * not declare them. Declare them before including this header, e.g. by
- * including Arrow's abi.h or any header that defines the same struct names.
+ * This header takes the Arrow C Data Interface structs (struct ArrowArray,
+ * struct ArrowSchema, and struct ArrowArrayStream) by pointer only, names them
+ * by struct tag, and forward-declares them, so it compiles on its own. To use
+ * their fields, include Arrow's abi.h, nanoarrow, or any header that defines
+ * the same structs, before or after this one.
  *
  * The committed copy lives at crates/st3-capi/include/st3.h; `make header`
  * refreshes it, and the test gate fails if it drifts from the generated one.
@@ -23,9 +24,19 @@ header = """/* SPDX-License-Identifier: BSD-3-Clause */
 documentation = true
 documentation_style = "c99"
 cpp_compat = true
+# Arrow's abi.h and nanoarrow declare the C Data Interface structs by tag only,
+# with no typedef, so the header names them by tag (see [export.rename]) and
+# forward-declares them here. The forward declarations give the tags file scope
+# in C, so the prototypes and a consumer's abi.h refer to the same types
+# whichever is included first.
+after_includes = """
+
+struct ArrowArray;
+struct ArrowSchema;
+struct ArrowArrayStream;"""
 
 # Do not parse the arrow dependency; its C Data Interface types are referenced by
-# pointer only and are provided by the standard Arrow abi.h (see [export.rename]).
+# pointer only and are forward-declared above (see [export.rename]).
 [parse]
 parse_deps = false
 
@@ -34,12 +45,11 @@ parse_deps = false
 include = ["St3Status", "St3Collapse", "St3EstimatorKind", "St3Config"]
 
 [export.rename]
-# Present the arrow-rs FFI mirrors under their standard C Data Interface names, so
-# a consumer that includes the Arrow `abi.h` sees matching (forward-declared)
-# types.
-"FFI_ArrowArray" = "ArrowArray"
-"FFI_ArrowSchema" = "ArrowSchema"
-"FFI_ArrowArrayStream" = "ArrowArrayStream"
+# Present the arrow-rs FFI mirrors under their standard C Data Interface struct
+# tags, as Arrow's `abi.h` declares them (`struct ArrowArray`, no typedef).
+"FFI_ArrowArray" = "struct ArrowArray"
+"FFI_ArrowSchema" = "struct ArrowSchema"
+"FFI_ArrowArrayStream" = "struct ArrowArrayStream"
 
 [enum]
 # `St3Status::Ok` -> `ST3_STATUS_OK`, `St3Collapse::Mean` -> `ST3_COLLAPSE_MEAN`,

@@ -40,12 +40,19 @@
 #include <string.h>
 
 /*
- * The Arrow C Data Interface structs (the standardized ABI). They are declared
- * here -- as typedefs matching the names st3.h refers to -- so the header can be
- * included immediately below. A real consumer typically gets these from Arrow's
- * own `abi.h` instead.
+ * The Arrow C Data Interface structs (the standardized ABI), declared exactly
+ * as Arrow's own `abi.h` and nanoarrow declare them: by struct tag, with no
+ * typedef, behind the standard guards. A real consumer typically includes
+ * `abi.h` or nanoarrow instead, before or after st3.h.
  */
-typedef struct ArrowSchema {
+#ifndef ARROW_C_DATA_INTERFACE
+#define ARROW_C_DATA_INTERFACE
+
+#define ARROW_FLAG_DICTIONARY_ORDERED 1
+#define ARROW_FLAG_NULLABLE 2
+#define ARROW_FLAG_MAP_KEYS_SORTED 4
+
+struct ArrowSchema {
   const char *format;
   const char *name;
   const char *metadata;
@@ -55,9 +62,9 @@ typedef struct ArrowSchema {
   struct ArrowSchema *dictionary;
   void (*release)(struct ArrowSchema *);
   void *private_data;
-} ArrowSchema;
+};
 
-typedef struct ArrowArray {
+struct ArrowArray {
   int64_t length;
   int64_t null_count;
   int64_t offset;
@@ -68,26 +75,30 @@ typedef struct ArrowArray {
   struct ArrowArray *dictionary;
   void (*release)(struct ArrowArray *);
   void *private_data;
-} ArrowArray;
+};
 
-typedef struct ArrowArrayStream {
-  int (*get_schema)(struct ArrowArrayStream *, struct ArrowSchema *);
-  int (*get_next)(struct ArrowArrayStream *, struct ArrowArray *);
+#endif /* ARROW_C_DATA_INTERFACE */
+
+#ifndef ARROW_C_STREAM_INTERFACE
+#define ARROW_C_STREAM_INTERFACE
+
+struct ArrowArrayStream {
+  int (*get_schema)(struct ArrowArrayStream *, struct ArrowSchema *out);
+  int (*get_next)(struct ArrowArrayStream *, struct ArrowArray *out);
   const char *(*get_last_error)(struct ArrowArrayStream *);
   void (*release)(struct ArrowArrayStream *);
   void *private_data;
-} ArrowArrayStream;
+};
+
+#endif /* ARROW_C_STREAM_INTERFACE */
 
 #include "st3.h"
-
-/* Arrow schema flag: the field is nullable. */
-#define ARROW_FLAG_NULLABLE 2
 
 /* No-op release callbacks for our static input buffers. Per the C Data
  * Interface, a release callback marks its object released by nulling its own
  * release pointer. */
-static void noop_release_array(ArrowArray *a) { a->release = NULL; }
-static void noop_release_schema(ArrowSchema *s) { s->release = NULL; }
+static void noop_release_array(struct ArrowArray *a) { a->release = NULL; }
+static void noop_release_schema(struct ArrowSchema *s) { s->release = NULL; }
 
 /* ---- The dataset --------------------------------------------------------------
  * 3 features (f0, f1, f2) and 4 samples: two sources (src_a in envA, src_b in
@@ -109,56 +120,55 @@ static const void *coo_row_bufs[2] = {NULL, coo_row};
 static const void *coo_col_bufs[2] = {NULL, coo_col};
 static const void *coo_val_bufs[2] = {NULL, coo_val};
 
-static ArrowArray coo_row_arr = {NNZ, 0, 0, 2, 0, coo_row_bufs, NULL, NULL,
-                                 noop_release_array, NULL};
-static ArrowArray coo_col_arr = {NNZ, 0, 0, 2, 0, coo_col_bufs, NULL, NULL,
-                                 noop_release_array, NULL};
-static ArrowArray coo_val_arr = {NNZ, 0, 0, 2, 0, coo_val_bufs, NULL, NULL,
-                                 noop_release_array, NULL};
-static ArrowArray *coo_children[3] = {&coo_row_arr, &coo_col_arr, &coo_val_arr};
+static struct ArrowArray coo_row_arr = {
+    NNZ, 0, 0, 2, 0, coo_row_bufs, NULL, NULL, noop_release_array, NULL};
+static struct ArrowArray coo_col_arr = {
+    NNZ, 0, 0, 2, 0, coo_col_bufs, NULL, NULL, noop_release_array, NULL};
+static struct ArrowArray coo_val_arr = {
+    NNZ, 0, 0, 2, 0, coo_val_bufs, NULL, NULL, noop_release_array, NULL};
+static struct ArrowArray *coo_children[3] = {&coo_row_arr, &coo_col_arr,
+                                             &coo_val_arr};
 /* A struct array has a single (validity) buffer and one child per field. */
 static const void *coo_struct_bufs[1] = {NULL};
-static ArrowArray coo_struct_arr = {NNZ, 0, 0, 1, 3, coo_struct_bufs,
-                                    coo_children, NULL, noop_release_array, NULL};
+static struct ArrowArray coo_struct_arr = {
+    NNZ, 0, 0, 1, 3, coo_struct_bufs, coo_children, NULL, noop_release_array,
+    NULL};
 
 /* Schemas mirror the arrays. Format "i" = int32, "g" = float64, "+s" = struct. */
-static ArrowSchema coo_row_schema = {"i",  "row", NULL, 0,
-                                     0,    NULL,  NULL, noop_release_schema,
-                                     NULL};
-static ArrowSchema coo_col_schema = {"i",  "col", NULL, 0,
-                                     0,    NULL,  NULL, noop_release_schema,
-                                     NULL};
-static ArrowSchema coo_val_schema = {"g",  "val", NULL, 0,
-                                     0,    NULL,  NULL, noop_release_schema,
-                                     NULL};
-static ArrowSchema *coo_schema_children[3] = {&coo_row_schema, &coo_col_schema,
-                                              &coo_val_schema};
-static ArrowSchema coo_schema = {"+s", NULL, NULL, 0,
-                                 3,    coo_schema_children, NULL,
-                                 noop_release_schema, NULL};
+static struct ArrowSchema coo_row_schema = {
+    "i", "row", NULL, 0, 0, NULL, NULL, noop_release_schema, NULL};
+static struct ArrowSchema coo_col_schema = {
+    "i", "col", NULL, 0, 0, NULL, NULL, noop_release_schema, NULL};
+static struct ArrowSchema coo_val_schema = {
+    "g", "val", NULL, 0, 0, NULL, NULL, noop_release_schema, NULL};
+static struct ArrowSchema *coo_schema_children[3] = {
+    &coo_row_schema, &coo_col_schema, &coo_val_schema};
+static struct ArrowSchema coo_schema = {
+    "+s", NULL, NULL, 0, 3, coo_schema_children, NULL, noop_release_schema,
+    NULL};
 
 /* feature_ids: ["f0", "f1", "f2"] as Utf8 (format "u"): three buffers -- validity
  * (NULL), int32 offsets, and packed character data. */
 static int32_t fid_offsets[N_FEATURES + 1] = {0, 2, 4, 6};
 static char fid_data[6] = "f0f1f2";
 static const void *fid_bufs[3] = {NULL, fid_offsets, fid_data};
-static ArrowArray fid_arr = {N_FEATURES, 0, 0, 3, 0, fid_bufs, NULL, NULL,
-                             noop_release_array, NULL};
-static ArrowSchema fid_schema = {"u",  NULL, NULL, 0,
-                                 0,    NULL, NULL, noop_release_schema, NULL};
+static struct ArrowArray fid_arr = {
+    N_FEATURES, 0, 0, 3, 0, fid_bufs, NULL, NULL, noop_release_array, NULL};
+static struct ArrowSchema fid_schema = {
+    "u", NULL, NULL, 0, 0, NULL, NULL, noop_release_schema, NULL};
 
 /* Per-sample metadata: sample_id / role / env (env nullable). */
 static int32_t sid_offsets[N_SAMPLES + 1] = {0, 5, 10, 15, 20};
 static char sid_data[20] = "src_asrc_bsink0sink1";
 static const void *sid_bufs[3] = {NULL, sid_offsets, sid_data};
-static ArrowArray sid_arr = {N_SAMPLES, 0, 0, 3, 0, sid_bufs, NULL, NULL,
-                             noop_release_array, NULL};
+static struct ArrowArray sid_arr = {
+    N_SAMPLES, 0, 0, 3, 0, sid_bufs, NULL, NULL, noop_release_array, NULL};
 
 static int32_t role_offsets[N_SAMPLES + 1] = {0, 6, 12, 16, 20};
 static char role_data[20] = "sourcesourcesinksink";
 static const void *role_bufs[3] = {NULL, role_offsets, role_data};
-static ArrowArray role_arr = {N_SAMPLES, 0, 0, 3, 0, role_bufs, NULL, NULL,
-                              noop_release_array, NULL};
+static struct ArrowArray role_arr = {
+    N_SAMPLES, 0, 0, 3, 0, role_bufs, NULL, NULL, noop_release_array, NULL};
 
 /* env = ["envA", "envB", NULL, NULL]: the sinks have no environment. The two
  * present values set validity bits 0b0011; null_count is 2. */
@@ -166,33 +176,31 @@ static uint8_t env_validity[1] = {0x03};
 static int32_t env_offsets[N_SAMPLES + 1] = {0, 4, 8, 8, 8};
 static char env_data[8] = "envAenvB";
 static const void *env_bufs[3] = {env_validity, env_offsets, env_data};
-static ArrowArray env_arr = {N_SAMPLES, 2, 0, 3, 0, env_bufs, NULL, NULL,
-                             noop_release_array, NULL};
+static struct ArrowArray env_arr = {
+    N_SAMPLES, 2, 0, 3, 0, env_bufs, NULL, NULL, noop_release_array, NULL};
 
-static ArrowArray *meta_children[3] = {&sid_arr, &role_arr, &env_arr};
+static struct ArrowArray *meta_children[3] = {&sid_arr, &role_arr, &env_arr};
 static const void *meta_struct_bufs[1] = {NULL};
-static ArrowArray meta_struct_arr = {N_SAMPLES, 0, 0, 1, 3, meta_struct_bufs,
-                                     meta_children, NULL, noop_release_array,
-                                     NULL};
+static struct ArrowArray meta_struct_arr = {
+    N_SAMPLES, 0, 0, 1, 3, meta_struct_bufs, meta_children, NULL,
+    noop_release_array, NULL};
 
-static ArrowSchema sid_schema = {"u",  "sample_id", NULL, 0,
-                                 0,    NULL,        NULL, noop_release_schema,
-                                 NULL};
-static ArrowSchema role_schema = {"u",  "role", NULL, 0,
-                                  0,    NULL,   NULL, noop_release_schema,
-                                  NULL};
-static ArrowSchema env_schema = {"u",  "env", NULL, ARROW_FLAG_NULLABLE,
-                                 0,    NULL,  NULL, noop_release_schema,
-                                 NULL};
-static ArrowSchema *meta_schema_children[3] = {&sid_schema, &role_schema,
-                                               &env_schema};
-static ArrowSchema meta_schema = {"+s", NULL, NULL, 0,
-                                  3,    meta_schema_children, NULL,
-                                  noop_release_schema, NULL};
+static struct ArrowSchema sid_schema = {
+    "u", "sample_id", NULL, 0, 0, NULL, NULL, noop_release_schema, NULL};
+static struct ArrowSchema role_schema = {
+    "u", "role", NULL, 0, 0, NULL, NULL, noop_release_schema, NULL};
+static struct ArrowSchema env_schema = {"u", "env", NULL, ARROW_FLAG_NULLABLE,
+                                        0,   NULL,  NULL, noop_release_schema,
+                                        NULL};
+static struct ArrowSchema *meta_schema_children[3] = {&sid_schema, &role_schema,
+                                                      &env_schema};
+static struct ArrowSchema meta_schema = {
+    "+s", NULL, NULL, 0, 3, meta_schema_children, NULL, noop_release_schema,
+    NULL};
 
 /* Release an exported (ArrowArray, ArrowSchema) pair through their own
  * callbacks. Safe to call whether or not the library populated them. */
-static void release_pair(ArrowArray *arr, ArrowSchema *schema) {
+static void release_pair(struct ArrowArray *arr, struct ArrowSchema *schema) {
   if (arr->release != NULL) {
     arr->release(arr);
   }
@@ -209,11 +217,12 @@ static void release_pair(ArrowArray *arr, ArrowSchema *schema) {
  * For a Float64 column, buffers[1] is the values (honour the array's own offset,
  * which is 0 for a freshly exported batch but defensive if it is ever sliced).
  */
-static void summarize_means(const ArrowArray *arr, const ArrowSchema *schema) {
+static void summarize_means(const struct ArrowArray *arr,
+                            const struct ArrowSchema *schema) {
   int64_t n_sinks = arr->length;
   int64_t n_cols = arr->n_children;
 
-  const ArrowArray *id_col = arr->children[0];
+  const struct ArrowArray *id_col = arr->children[0];
   const int32_t *id_off = (const int32_t *)id_col->buffers[1] + id_col->offset;
   const char *id_data = (const char *)id_col->buffers[2];
 
@@ -221,7 +230,7 @@ static void summarize_means(const ArrowArray *arr, const ArrowSchema *schema) {
     int64_t best = 1;
     double best_val = -1.0;
     for (int64_t c = 1; c < n_cols; c++) {
-      const ArrowArray *col = arr->children[c];
+      const struct ArrowArray *col = arr->children[c];
       double v = ((const double *)col->buffers[1])[col->offset + r];
       if (v > best_val) {
         best_val = v;
@@ -281,8 +290,8 @@ int main(void) {
   }
 
   /* 4a. Export the dense mixing means and summarize them. */
-  ArrowArray means_arr;
-  ArrowSchema means_schema;
+  struct ArrowArray means_arr;
+  struct ArrowSchema means_schema;
   st = st3_result_means(result, &means_arr, &means_schema);
   if (st != ST3_STATUS_OK) {
     fprintf(stderr, "means export failed (%d): %s\n", (int)st, st3_last_error());
@@ -298,8 +307,8 @@ int main(void) {
   /* 4b. Export the dense per-draw standard deviations (same shape as the means).
    * We just confirm the shape here; a real consumer would read them like the
    * means above. */
-  ArrowArray stds_arr;
-  ArrowSchema stds_schema;
+  struct ArrowArray stds_arr;
+  struct ArrowSchema stds_schema;
   st = st3_result_stds(result, &stds_arr, &stds_schema);
   if (st != ST3_STATUS_OK) {
     fprintf(stderr, "stds export failed (%d): %s\n", (int)st, st3_last_error());
@@ -316,7 +325,7 @@ int main(void) {
    * `value` column (child index 3); the total mass equals the sinks' summed
    * depth. Draining ends when get_next hands back a released (null-release)
    * array. */
-  ArrowArrayStream stream;
+  struct ArrowArrayStream stream;
   st = st3_result_contingency_stream(result, &stream);
   if (st != ST3_STATUS_OK) {
     fprintf(stderr, "contingency stream failed (%d): %s\n", (int)st,
@@ -329,7 +338,7 @@ int main(void) {
   int n_batches = 0;
   double contingency_mass = 0.0;
   for (;;) {
-    ArrowArray batch;
+    struct ArrowArray batch;
     if (stream.get_next(&stream, &batch) != 0) {
       const char *msg = stream.get_last_error ? stream.get_last_error(&stream)
                                               : "unknown stream error";
@@ -342,7 +351,7 @@ int main(void) {
     if (batch.release == NULL) {
       break; /* end of stream */
     }
-    const ArrowArray *value_col = batch.children[3];
+    const struct ArrowArray *value_col = batch.children[3];
     const double *values =
         (const double *)value_col->buffers[1] + value_col->offset;
     for (int64_t i = 0; i < batch.length; i++) {

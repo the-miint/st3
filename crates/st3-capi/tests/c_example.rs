@@ -63,6 +63,7 @@ fn c_usage_example_compiles_and_runs() {
         .arg("-std=c11")
         .arg("-Wall")
         .arg("-Wextra")
+        .arg("-Werror")
         .arg(format!("-I{header_dir}"))
         .arg(&example_c)
         .arg("-o")
