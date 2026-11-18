@@ -38,21 +38,24 @@ fn c_usage_example_compiles_and_runs() {
     let example_c = PathBuf::from(manifest_dir).join("examples").join("usage.c");
     assert!(example_c.exists(), "missing {}", example_c.display());
 
-    // The test binary lives at target/<profile>/deps/<name>-<hash>; the shared
-    // library is two levels up at target/<profile>/libst3.so.
+    // Cargo writes the shared library to target/<profile>/libst3.so and the test
+    // binary somewhere below target/<profile>: to deps/ under its original
+    // layout, which holds the library too (so the search stops there), and to
+    // build/st3-capi/<hash>/out/ under its newer build-dir layout (seen with
+    // Cargo 1.100). Take the nearest ancestor that holds the library.
     let exe = std::env::current_exe().expect("current_exe");
     let profile_dir: &Path = exe
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("target/<profile> directory");
-    let lib = profile_dir.join("libst3.so");
-    assert!(
-        lib.exists(),
-        "libst3.so not found at {}. `cargo test` builds only the rlib, never the \
-         cdylib, so this test needs an explicit `cargo build --workspace \
-         --all-features` first (which is what `make test` does).",
-        lib.display()
-    );
+        .ancestors()
+        .find(|dir| dir.join("libst3.so").exists())
+        .unwrap_or_else(|| {
+            panic!(
+                "libst3.so not found in any directory above {}. `cargo test` builds \
+                 only the rlib, never the cdylib, so this test needs an explicit \
+                 `cargo build --workspace --all-features` first (which is what \
+                 `make test` does).",
+                exe.display()
+            )
+        });
 
     let bin = profile_dir.join("st3_c_example");
 
@@ -61,6 +64,7 @@ fn c_usage_example_compiles_and_runs() {
         .arg("-std=c11")
         .arg("-Wall")
         .arg("-Wextra")
+        .arg("-Werror")
         .arg(format!("-I{header_dir}"))
         .arg(&example_c)
         .arg("-o")

@@ -49,6 +49,21 @@ breaking ABI change.
   target of duckdb-miint's DuckDB-Wasm build, so the crate stays buildable
   there (#6).
 
+### Fixed
+- `st3.h` now compiles in C against Arrow's own `abi.h` and nanoarrow, which
+  declare the C Data Interface structs by tag only (`struct ArrowSchema`, no
+  typedef). The header used the bare names (`const ArrowArray *`), so such a C
+  consumer failed with "unknown type name"; only C++ consumers, and C
+  consumers that wrote their own typedefs, compiled. The header now names the
+  structs by tag and forward-declares them, so it compiles with `abi.h`
+  included before it, after it, or not at all; this replaces the note added
+  for #1 that the structs must be declared first. The ABI is unchanged, and
+  consumers that declare the structs under these tags (as `abi.h`, nanoarrow
+  and DuckDB do), with or without typedefs, still compile; one that declared
+  them only as typedefs of anonymous structs (`typedef struct { ... }
+  ArrowArray;`) must now name the tags. The C example and harness now declare
+  the structs as `abi.h` does and compile with `-Werror`.
+
 ## [1.0.0] — 2026-07-06
 
 First release. SourceTracker3 is a library-only, C/C++-facing reimplementation

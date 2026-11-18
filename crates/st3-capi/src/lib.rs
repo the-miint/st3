@@ -264,7 +264,7 @@ pub unsafe extern "C" fn st3_result_stds(
 ///
 /// # Safety
 /// `result` must be a live handle from `st3_run`; `out_stream` must be a valid,
-/// writable, aligned pointer to an uninitialized `FFI_ArrowArrayStream` slot.
+/// writable, aligned pointer to an uninitialized `struct ArrowArrayStream` slot.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn st3_result_contingency_stream(
     result: *const St3Result,

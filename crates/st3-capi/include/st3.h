@@ -4,10 +4,11 @@
 /*
  * SourceTracker3 C ABI.
  *
- * This header refers to the Arrow C Data Interface structs -- ArrowArray,
- * ArrowSchema, and ArrowArrayStream -- by pointer only and deliberately does
- * not declare them. Declare them before including this header, e.g. by
- * including Arrow's abi.h or any header that defines the same struct names.
+ * This header takes the Arrow C Data Interface structs (struct ArrowArray,
+ * struct ArrowSchema, and struct ArrowArrayStream) by pointer only, names them
+ * by struct tag, and forward-declares them, so it compiles on its own. To use
+ * their fields, include Arrow's abi.h, nanoarrow, or any header that defines
+ * the same structs, before or after this one.
  *
  * The committed copy lives at crates/st3-capi/include/st3.h; `make header`
  * refreshes it, and the test gate fails if it drifts from the generated one.
@@ -22,6 +23,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
+
+struct ArrowArray;
+struct ArrowSchema;
+struct ArrowArrayStream;
 
 // The only configuration layout version understood by this ABI. Callers set
 // the `St3Config.struct_version` field to this value.
@@ -165,12 +170,12 @@ uint32_t st3_abi_version(void);
 // structure, and `out` must be a valid, writable `*mut *mut St3Table`. When all
 // pointers are valid, each of the three arrays is *consumed* (the library
 // releases it); the caller must relinquish them and not release them again.
-enum St3Status st3_table_from_arrow(const ArrowArray *coo,
-                                    const ArrowSchema *coo_schema,
-                                    const ArrowArray *feature_ids,
-                                    const ArrowSchema *feature_ids_schema,
-                                    const ArrowArray *metadata,
-                                    const ArrowSchema *metadata_schema,
+enum St3Status st3_table_from_arrow(const struct ArrowArray *coo,
+                                    const struct ArrowSchema *coo_schema,
+                                    const struct ArrowArray *feature_ids,
+                                    const struct ArrowSchema *feature_ids_schema,
+                                    const struct ArrowArray *metadata,
+                                    const struct ArrowSchema *metadata_schema,
                                     struct St3Table **out);
 
 // Run source attribution over an imported table, producing a result handle.
@@ -206,8 +211,8 @@ enum St3Status st3_run(const struct St3Table *table,
 // `result` must be a live handle from `st3_run`; `out` and `out_schema` must
 // be valid, writable, aligned pointers to uninitialized FFI slots.
 enum St3Status st3_result_means(const struct St3Result *result,
-                                ArrowArray *out,
-                                ArrowSchema *out_schema);
+                                struct ArrowArray *out,
+                                struct ArrowSchema *out_schema);
 
 // Export a result's mixing **standard deviations** as a dense Arrow record
 // batch, same shape as `st3_result_means`.
@@ -218,8 +223,8 @@ enum St3Status st3_result_means(const struct St3Result *result,
 // # Safety
 // As `st3_result_means`.
 enum St3Status st3_result_stds(const struct St3Result *result,
-                               ArrowArray *out,
-                               ArrowSchema *out_schema);
+                               struct ArrowArray *out,
+                               struct ArrowSchema *out_schema);
 
 // Export a result's per-sink source × taxon assignment tally as an Arrow array
 // stream.
@@ -232,9 +237,9 @@ enum St3Status st3_result_stds(const struct St3Result *result,
 //
 // # Safety
 // `result` must be a live handle from `st3_run`; `out_stream` must be a valid,
-// writable, aligned pointer to an uninitialized `FFI_ArrowArrayStream` slot.
+// writable, aligned pointer to an uninitialized `struct ArrowArrayStream` slot.
 enum St3Status st3_result_contingency_stream(const struct St3Result *result,
-                                             ArrowArrayStream *out_stream);
+                                             struct ArrowArrayStream *out_stream);
 
 // Free a table handle previously returned by `st3_table_from_arrow`.
 //
